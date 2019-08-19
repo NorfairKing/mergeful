@@ -42,11 +42,80 @@ spec = do
   genValidSpec @(SyncRequest Int)
   genValidSpec @(SyncResponse Int)
   describe "initialServerTime" $ it "is valid" $ shouldBeValid initialServerTime
-  describe "makeSyncRequest" $ it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @Int)
+  describe "makeSyncRequest" $
+    it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @Int)
   describe "mergeSyncResponse" $
     it "produces valid client stores" $ producesValidsOnValids2 (mergeSyncResponse @Int)
-  describe "processServerSync" $
+  describe "processServerSync" $ do
     it "produces valid responses and stores" $ producesValidsOnValids2 (processServerSync @Int)
+    it "makes no changes if the sync request reflects the state of the empty server" $
+      forAllValid $ \st -> do
+        let store1 = ServerState st $ ServerEmpty st
+            req = SyncRequestPoll
+        let (resp, store2) = processServerSync @Int store1 req
+        store2 `shouldBe` store1
+        resp `shouldBe` SyncResponseInSyncEmpty
+    it "makes no changes if the sync request reflects the state of the full server" $
+      forAllValid $ \i ->
+        forAllValid $ \st -> do
+          let store1 = ServerState st $ ServerFull i st
+              req = SyncRequestKnown st
+          let (resp, store2) = processServerSync @Int store1 req
+          store2 `shouldBe` store1
+          resp `shouldBe` SyncResponseInSyncFull
+    describe "Client changes" $ do
+      it "adds the item that the client tells the server to add" $
+        forAllValid $ \i ->
+          forAllValid $ \st -> do
+            let store1 = ServerState st $ ServerEmpty st
+                req = SyncRequestNew i
+            let (resp, store2) = processServerSync @Int store1 req
+            let time = incrementServerTime st
+            store2 `shouldBe` ServerState time (ServerFull i time)
+            resp `shouldBe` SyncResponseSuccesfullyAdded time
+      it "changes the item that the client tells the server to change" $
+        forAllValid $ \i ->
+          forAll (genValid `suchThat` (/= i)) $ \j ->
+            forAllValid $ \st -> do
+              let store1 = ServerState st $ ServerFull i st
+                  req = SyncRequestKnownButChanged j st
+              let (resp, store2) = processServerSync @Int store1 req
+              let time = incrementServerTime st
+              store2 `shouldBe` ServerState time (ServerFull j time)
+              resp `shouldBe` SyncResponseSuccesfullyChanged time
+      it "deletes the item that the client tells the server to delete" $
+        forAllValid $ \i ->
+          forAllValid $ \st -> do
+            let store1 = ServerState st $ ServerFull i st
+                req = SyncRequestDeletedLocally st
+            let (resp, store2) = processServerSync @Int store1 req
+            let time = incrementServerTime st
+            store2 `shouldBe` ServerState time (ServerEmpty time)
+            resp `shouldBe` SyncResponseSuccesfullyDeleted
+    describe "Server changes" $ do
+      it "tells the client that there is a new item at the server side" $ do
+        forAllValid $ \i ->
+          forAllValid $ \st -> do
+            let store1 = ServerState st $ ServerFull i st
+                req = SyncRequestPoll
+            let (resp, store2) = processServerSync @Int store1 req
+            store2 `shouldBe` store1
+            resp `shouldBe` SyncResponseNewAtServer i st
+      it "tells the client that there is a modified item at the server side" $ do
+        forAllValid $ \i ->
+          forAllSubsequent $ \(st, st') -> do
+            let store1 = ServerState st' $ ServerFull i st'
+                req = SyncRequestKnown st
+            let (resp, store2) = processServerSync @Int store1 req
+            store2 `shouldBe` store1
+            resp `shouldBe` SyncResponseModifiedAtServer i st'
+      it "tells the client that there is a deleted item at the server side" $ do
+          forAllSubsequent $ \(st, st') -> do
+            let store1 = ServerState st' $ ServerEmpty st'
+                req = SyncRequestKnown  st
+            let (resp, store2) = processServerSync @Int store1 req
+            store2 `shouldBe` store1
+            resp `shouldBe` SyncResponseDeletedAtServer
   describe "syncing" $ do
     it "it always possible to add an item from scratch" $
       forAllValid $ \i -> do
