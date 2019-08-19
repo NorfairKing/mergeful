@@ -179,31 +179,31 @@ spec = do
       forAllValid $ \time1 ->
         forAllValid $ \i -> do
           let cAstore1 = ClientAdded i
-        -- Client B is empty
+          -- Client B is empty
           let cBstore1 = ClientEmpty
-        -- The server is empty
+          -- The server is empty
           let sstore1 = ServerEmpty time1
-        -- Client A makes sync request 1
+          -- Client A makes sync request 1
           let req1 = makeSyncRequest cAstore1
-        -- The server processes sync request 1
+          -- The server processes sync request 1
           let (resp1, sstore2) = processServerSync @Int sstore1 req1
           let time2 = incrementServerTime time1
           resp1 `shouldBe` SyncResponseSuccesfullyAdded time2
           sstore2 `shouldBe` ServerFull i time2
-        -- Client A merges the response
+          -- Client A merges the response
           let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
           cAstore2 `shouldBe` ClientSynced i time2
-        -- Client B makes sync request 2
+          -- Client B makes sync request 2
           let req2 = makeSyncRequest cBstore1
-        -- The server processes sync request 2
+          -- The server processes sync request 2
           let (resp2, sstore3) = processServerSync sstore2 req2
           let time3 = incrementServerTime time2
           resp2 `shouldBe` SyncResponseNewAtServer i time2
           sstore3 `shouldBe` ServerFull i time2
-        -- Client B merges the response
+          -- Client B merges the response
           let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
           cBstore2 `shouldBe` ClientSynced i time2
-        -- Client A and Client B now have the same store
+          -- Client A and Client B now have the same store
           cAstore2 `shouldBe` cBstore2
     it "succesfully syncs a modification across to a second client" $
       forAllValid $ \time1 ->
