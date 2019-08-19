@@ -73,7 +73,7 @@ data ClientStore a
   | ClientAdded a
   | ClientSynced a ServerTime
   | ClientSyncedButChanged a ServerTime -- The item has been synced with the server but since modified.
-  | ClientDeleted a ServerTime
+  | ClientDeleted ServerTime
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ClientStore a)
@@ -194,7 +194,7 @@ makeSyncRequest cs =
     ClientAdded i -> SyncRequestNew i
     ClientSynced _ st -> SyncRequestKnown st
     ClientSyncedButChanged i st -> SyncRequestKnownButChanged i st
-    ClientDeleted _ st -> SyncRequestDeletedLocally st
+    ClientDeleted st -> SyncRequestDeletedLocally st
 
 data MergeResult a
   = MergeSuccess (ClientStore a)
@@ -219,7 +219,6 @@ mergeSyncResponseRaw cs sr =
           case sr of
             SyncResponseInSyncEmpty -> MergeSuccess cs
             SyncResponseNewAtServer i st -> MergeSuccess $ ClientSynced i st
-            SyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
             SyncResponseDesynchronised st msi -> MergeDesync st msi
             _ -> MergeMismatch
         ClientAdded ci ->
@@ -242,10 +241,10 @@ mergeSyncResponseRaw cs sr =
             SyncResponseConflictServerDeleted -> MergeConflictServerDeleted ci
             SyncResponseDesynchronised st msi -> MergeDesync st msi
             _ -> MergeMismatch
-        ClientDeleted ci ct ->
+        ClientDeleted ct ->
           case sr of
             SyncResponseSuccesfullyDeleted -> MergeSuccess ClientEmpty
-            SyncResponseConflictServerDeleted -> MergeConflictServerDeleted ci
+            SyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
             SyncResponseDesynchronised st msi -> MergeDesync st msi
             _ -> MergeMismatch
 
