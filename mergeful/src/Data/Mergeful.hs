@@ -142,7 +142,7 @@ data SyncResponse a
   -- | The client deleted an item and server has succesfully been made aware of that.
   --
   -- Nothing needs to be done at the client side.
-  | SyncResponseSuccesfullyDeleted a ServerTime
+  | SyncResponseSuccesfullyDeleted
   -- | The client and the server were not in sync, but somehow still both had the same item.
   --
   -- The client needs to update its server time
@@ -238,6 +238,9 @@ mergeSyncResponseIgnoreProblems cs sr =
             _ -> mismatch
         ClientDeleted ci ct ->
           case sr of
+            SyncResponseSuccesfullyDeleted -> ClientEmpty
+            SyncResponseConflictServerDeleted -> conflict
+            SyncResponseDesynchronised _ _ -> desync
             _ -> mismatch
 
 processServerSync :: Eq a => ServerState a -> SyncRequest a -> (SyncResponse a, ServerState a)
@@ -381,7 +384,7 @@ processServerSync state sr =
                   -- The client time is equal to the server time.
                   -- The client indicates that the item was deleted on their side.
                   -- This means that the server item needs to be deleted as well.
-                 -> assert (ci == si) (SyncResponseSuccesfullyDeleted ci t, s $ ServerEmpty t)
+                 -> assert (ci == si) (SyncResponseSuccesfullyDeleted, s $ ServerEmpty t)
                 LT
                   -- The client time is less than the server time
                   -- That means that the server has synced with another client in the meantime.
@@ -389,5 +392,5 @@ processServerSync state sr =
                   -- there is a conflict.
                  ->
                   if si == ci
-                    then (SyncResponseSuccesfullyDeleted si t, s $ ServerEmpty t)
+                    then (SyncResponseSuccesfullyDeleted, s $ ServerEmpty t)
                     else (SyncResponseConflictClientDeleted si, state)
