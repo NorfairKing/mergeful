@@ -35,22 +35,22 @@ forAllSubsequent func =
 
 spec :: Spec
 spec = do
-  genValidSpec @ClientStore
   genValidSpec @ServerTime
-  genValidSpec @ServerStore
-  genValidSpec @ServerState
-  genValidSpec @SyncRequest
-  genValidSpec @SyncResponse
+  genValidSpec @(ClientStore Int)
+  genValidSpec @(ServerStore Int)
+  genValidSpec @(ServerState Int)
+  genValidSpec @(SyncRequest Int)
+  genValidSpec @(SyncResponse Int)
   describe "initialServerTime" $ it "is valid" $ shouldBeValid initialServerTime
-  describe "makeSyncRequest" $ it "produces valid requests" $ producesValidsOnValids makeSyncRequest
+  describe "makeSyncRequest" $ it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @Int)
   describe "mergeSyncResponse" $
-    it "produces valid client stores" $ producesValidsOnValids2 mergeSyncResponse
+    it "produces valid client stores" $ producesValidsOnValids2 (mergeSyncResponse @Int)
   describe "processServerSync" $
-    it "produces valid responses and stores" $ producesValidsOnValids2 processServerSync
+    it "produces valid responses and stores" $ producesValidsOnValids2 (processServerSync @Int)
   describe "syncing" $ do
     it "it always possible to add an item from scratch" $
       forAllValid $ \i -> do
-        let cstore1 = ClientAdded i
+        let cstore1 = ClientAdded (i :: Int)
         let sstore1 = initialServerState
         let req1 = makeSyncRequest cstore1
             (resp1, sstore2) = processServerSync sstore1 req1
@@ -62,7 +62,7 @@ spec = do
     it "is idempotent with one client" $
       forAllValid $ \cstore1 ->
         forAllValid $ \sstore1 -> do
-          let req1 = makeSyncRequest cstore1
+          let req1 = makeSyncRequest (cstore1 :: ClientStore Int)
               (resp1, sstore2) = processServerSync sstore1 req1
               cstore2 = mergeSyncResponse cstore1 resp1
               req2 = makeSyncRequest cstore2

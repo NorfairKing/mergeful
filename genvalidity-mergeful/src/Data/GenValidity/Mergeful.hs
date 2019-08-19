@@ -8,26 +8,38 @@ import Data.GenValidity.Time ()
 
 import Data.Mergeful
 
-instance GenUnchecked ClientStore
+instance GenUnchecked a => GenUnchecked (ClientStore a)
 
-instance GenValid ClientStore
+instance GenValid a => GenValid (ClientStore a) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenUnchecked ServerState
+instance GenUnchecked a => GenUnchecked (ServerState a)
 
-instance GenValid ServerState
+instance GenValid a => GenValid (ServerState a) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenUnchecked ServerStore
+instance GenUnchecked a => GenUnchecked (ServerStore a)
 
-instance GenValid ServerStore
+instance GenValid a => GenValid (ServerStore a) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenUnchecked SyncRequest
+instance GenUnchecked a => GenUnchecked (SyncRequest a)
 
-instance GenValid SyncRequest
+instance GenValid a => GenValid (SyncRequest a) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenUnchecked SyncResponse
+instance GenUnchecked a => GenUnchecked (SyncResponse a)
 
-instance GenValid SyncResponse
+instance GenValid a => GenValid (SyncResponse a) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
 instance GenUnchecked ServerTime
 
-instance GenValid ServerTime
+instance GenValid ServerTime where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering

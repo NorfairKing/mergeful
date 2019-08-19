@@ -65,26 +65,26 @@ import Data.Word
 
 import Control.Exception (assert)
 
-data ClientStore
+data ClientStore a
   = ClientEmpty
-  | ClientAdded Int
-  | ClientSynced Int ServerTime
-  | ClientSyncedButChanged Int ServerTime -- The item has been synced with the server but since modified.
-  | ClientDeleted Int ServerTime
+  | ClientAdded a
+  | ClientSynced a ServerTime
+  | ClientSyncedButChanged a ServerTime -- The item has been synced with the server but since modified.
+  | ClientDeleted a ServerTime
   deriving (Show, Eq, Generic)
 
-instance Validity ClientStore
+instance Validity a => Validity (ClientStore a)
 
-data ServerState =
+data ServerState a =
   ServerState
     { serverStateTime :: ServerTime
-    , serverStateStore :: ServerStore
+    , serverStateStore :: ServerStore a
     }
   deriving (Show, Eq, Generic)
 
-instance Validity ServerState
+instance Validity a => Validity (ServerState a)
 
-initialServerState :: ServerState
+initialServerState :: ServerState a
 initialServerState =
   ServerState {serverStateTime = initialServerTime, serverStateStore = initialServerStore}
 
@@ -102,27 +102,27 @@ initialServerTime = ServerTime 0
 incrementServerTime :: ServerTime -> ServerTime
 incrementServerTime (ServerTime w) = ServerTime (succ w)
 
-data ServerStore
+data ServerStore a
   = ServerEmpty ServerTime
-  | ServerFull Int ServerTime
+  | ServerFull a ServerTime
   deriving (Show, Eq, Generic)
 
-instance Validity ServerStore
+instance Validity a => Validity (ServerStore a)
 
-initialServerStore :: ServerStore
+initialServerStore :: ServerStore a
 initialServerStore = ServerEmpty initialServerTime
 
-data SyncRequest
+data SyncRequest a
   = SyncRequestPoll
-  | SyncRequestNew Int
-  | SyncRequestKnown Int ServerTime
-  | SyncRequestKnownButChanged Int ServerTime
-  | SyncRequestDeletedLocally Int ServerTime
+  | SyncRequestNew a
+  | SyncRequestKnown a ServerTime
+  | SyncRequestKnownButChanged a ServerTime
+  | SyncRequestDeletedLocally a ServerTime
   deriving (Show, Eq, Generic)
 
-instance Validity SyncRequest
+instance Validity a => Validity (SyncRequest a)
 
-data SyncResponse
+data SyncResponse a
   -- | The client and server are fully in sync, and both empty
   --
   -- Nothing needs to be done at the client side.
@@ -130,7 +130,7 @@ data SyncResponse
   -- | The client and server are fully in sync.
   --
   -- Nothing needs to be done at the client side.
-  | SyncResponseInSyncFull Int
+  | SyncResponseInSyncFull
   -- | The client added an item and server has succesfully been made aware of that.
   --
   -- The client needs to update its server time
@@ -142,7 +142,7 @@ data SyncResponse
   -- | The client deleted an item and server has succesfully been made aware of that.
   --
   -- Nothing needs to be done at the client side.
-  | SyncResponseSuccesfullyDeleted Int ServerTime
+  | SyncResponseSuccesfullyDeleted a ServerTime
   -- | The client and the server were not in sync, but somehow still both had the same item.
   --
   -- The client needs to update its server time
@@ -150,11 +150,11 @@ data SyncResponse
   -- | This item has been added on the server side
   --
   -- The client should add it too.
-  | SyncResponseNewAtServer Int ServerTime
+  | SyncResponseNewAtServer a ServerTime
   -- | This item has been modified on the server side.
   --
   -- The client should modify it too.
-  | SyncResponseModifiedAtServer Int ServerTime
+  | SyncResponseModifiedAtServer a ServerTime
   -- | The item was deleted on the server side
   --
   -- The client should delete it too.
@@ -164,13 +164,13 @@ data SyncResponse
   -- The server and the client both have an item, but it is different.
   -- The server kept its part, the client can either take whatever the server gave them
   -- or deal with the conflict somehow, and then try to re-sync.
-  | SyncResponseConflict Int -- ^ The item at the server side
+  | SyncResponseConflict a -- ^ The item at the server side
   -- | A conflict occurred.
   --
   -- The server has an item but the client does not.
   -- The server kept its part, the client can either take whatever the server gave them
   -- or deal with the conflict somehow, and then try to re-sync.
-  | SyncResponseConflictClientDeleted Int -- ^ The item at the server side
+  | SyncResponseConflictClientDeleted a -- ^ The item at the server side
   -- | A conflict occurred.
   --
   -- The client has a (modified) item but the server does not have any item.
@@ -183,12 +183,12 @@ data SyncResponse
   -- or when a client syncs with one server and then with another server.
   | SyncResponseDesynchronised
       ServerTime -- ^ Reported server time at server side
-      (Maybe Int) -- ^ The item that the server knew about
+      (Maybe a) -- ^ The item that the server knew about
   deriving (Show, Eq, Generic)
 
-instance Validity SyncResponse
+instance Validity a => Validity (SyncResponse a)
 
-makeSyncRequest :: ClientStore -> SyncRequest
+makeSyncRequest :: ClientStore a -> SyncRequest a
 makeSyncRequest cs =
   case cs of
     ClientEmpty -> SyncRequestPoll
@@ -197,10 +197,10 @@ makeSyncRequest cs =
     ClientSyncedButChanged i st -> SyncRequestKnownButChanged i st
     ClientDeleted i st -> SyncRequestDeletedLocally i st
 
-mergeSyncResponse :: ClientStore -> SyncResponse -> ClientStore
+mergeSyncResponse :: ClientStore a -> SyncResponse a -> ClientStore a
 mergeSyncResponse = mergeSyncResponseIgnoreProblems
 
-mergeSyncResponseIgnoreProblems :: ClientStore -> SyncResponse -> ClientStore
+mergeSyncResponseIgnoreProblems :: ClientStore a -> SyncResponse a -> ClientStore a
 mergeSyncResponseIgnoreProblems cs sr =
   let conflict = cs
       desync = cs
@@ -222,7 +222,7 @@ mergeSyncResponseIgnoreProblems cs sr =
             _ -> mismatch
         ClientSynced ci ct ->
           case sr of
-            SyncResponseInSyncFull si -> assert (ci == si) $ ClientSynced si ct
+            SyncResponseInSyncFull -> ClientSynced ci ct
             SyncResponseEqualAlreadyAtServer st -> ClientSynced ci st
             SyncResponseModifiedAtServer si st -> ClientSynced si st
             SyncResponseDeletedAtServer -> ClientEmpty
@@ -240,7 +240,7 @@ mergeSyncResponseIgnoreProblems cs sr =
           case sr of
             _ -> mismatch
 
-processServerSync :: ServerState -> SyncRequest -> (SyncResponse, ServerState)
+processServerSync :: Eq a => ServerState a -> SyncRequest a -> (SyncResponse a, ServerState a)
 processServerSync state sr =
   let t = incrementServerTime $ serverStateTime state -- The next time to use if the item has been updated
       s store = ServerState {serverStateTime = t, serverStateStore = store}
@@ -335,7 +335,7 @@ processServerSync state sr =
                   -- This means that the items are in sync.
                   -- (Unless the server somehow modified the item but not its server time,
                   -- which would beconsidered a bug.)
-                 -> assert (si == ci) (SyncResponseInSyncFull si, state)
+                 -> assert (si == ci) (SyncResponseInSyncFull, state)
                 LT
                   -- The client time is less than the server time
                   -- That means that the server has synced with another client in the meantime.
