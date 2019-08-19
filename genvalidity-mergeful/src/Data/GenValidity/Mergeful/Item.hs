@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Data.GenValidity.Mergeful where
+module Data.GenValidity.Mergeful.Item where
 
 import Data.GenValidity
 import Data.GenValidity.Containers ()
@@ -8,7 +8,7 @@ import Data.GenValidity.Time ()
 
 import Test.QuickCheck
 
-import Data.Mergeful
+import Data.Mergeful.Item
 
 instance GenUnchecked a => GenUnchecked (ClientStore a)
 

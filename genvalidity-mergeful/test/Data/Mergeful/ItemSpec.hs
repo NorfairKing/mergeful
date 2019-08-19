@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Data.MergefulSpec
+module Data.Mergeful.ItemSpec
   ( spec
   ) where
 
@@ -21,16 +21,17 @@ import Test.QuickCheck
 import Test.Validity
 import Test.Validity.Aeson
 
-import Data.GenValidity.Mergeful
 import Data.GenValidity.UUID.Typed ()
-import Data.Mergeful
 import Data.UUID.Typed
+
+import Data.GenValidity.Mergeful.Item
+import Data.Mergeful.Item
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
--- forAllNext func = forAllValid $ \st -> func (st, incrementServerTime st)
+forAllSubsequent :: Testable prop => ((ServerTime, ServerTime) -> prop) -> Property
 forAllSubsequent func =
-  forAllValid $ \st -> forAll (genValid `suchThat` (> st)) $ \st' -> func (st, st')
+  forAllValid $ \st -> forAllShrink (genValid `suchThat` (> st)) (filter (> st) . shrinkValid) $ \st' -> func (st, st')
 
 spec :: Spec
 spec = do

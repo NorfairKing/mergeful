@@ -6,25 +6,9 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
--- | A way to synchronise items without merge conflicts.
+-- | A way to synchronise a single items without merge conflicts.
 --
--- This concept has a few requirements:
---
--- * Items must be immutable.
--- * Items must allow for a centrally unique identifier.
--- * Identifiers for items must be generatable in such a way that they are certainly unique.
---
--- Should mutation be a requirement, then it can be build such that it entails deleting the old version and creating a new version that is the modification of the old version.
---
---
--- There are a few obvious candidates for identifiers:
---
--- * incremental identifiers
--- * universally unique identifiers (recommended).
---
---
---
--- The typical setup is as follows:
+-- The setup is as follows:
 --
 -- * A central server is set up to synchronise with
 -- * Each client synchronises with the central server, but never with eachother
@@ -33,7 +17,7 @@
 -- A central server should operate as follows:
 --
 -- * The server accepts a 'SyncRequest'.
--- * The server performs operations according to the functionality of 'processSync'.
+-- * The server performs operations according to the functionality of 'processServerSync'.
 -- * The server respons with a 'SyncResponse'.
 --
 --
@@ -41,8 +25,8 @@
 --
 -- * The client produces a 'SyncRequest' with 'makeSyncRequest'.
 -- * The client sends that request to the central server and gets a 'SyncResponse'.
--- * The client then updates its local store with 'mergeSyncResponse'.
-module Data.Mergeful
+-- * The client then updates its local store with 'mergeSyncResponseRaw' or mergeSyncResponseIgnoreProblems.
+module Data.Mergeful.Item
   ( ClientStore(..)
   , SyncRequest(..)
   , makeSyncRequest
