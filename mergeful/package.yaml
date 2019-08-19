@@ -1,0 +1,26 @@
+name:                mergeful
+version:             0.0.0.0
+github:              "NorfairKing/mergeful"
+license:             MIT
+author:              "Tom Sydney Kerckhove"
+maintainer:          "syd@cs-syd.eu"
+copyright:           "Copyright: (c) 2019 Tom Sydney Kerckhove"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+description:         Please see the README on GitHub at <https://github.com/NorfairKing/mergeful#readme>
+
+
+library:
+  source-dirs: src
+  dependencies:
+    - base >= 4.7 && < 5
+    - aeson
+    - containers
+    - mtl
+    - time
+    - validity
+    - validity-containers
+    - validity-time

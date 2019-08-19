@@ -1,0 +1,48 @@
+name:                genvalidity-mergeful
+version:             0.0.0.0
+github:              "NorfairKing/mergeful"
+license:             MIT
+author:              "Tom Sydney Kerckhove"
+maintainer:          "syd@cs-syd.eu"
+copyright:           "Copyright: (c) 2019 Tom Sydney Kerckhove"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+description:         Please see the README on GitHub at <https://github.com/NorfairKing/mergeful#readme>
+
+
+library:
+  source-dirs: src
+  dependencies:
+    - base >= 4.7 && < 5
+    - QuickCheck
+    - genvalidity
+    - genvalidity-containers
+    - genvalidity-time
+    - mergeful
+
+tests:
+  mergeful-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+      - QuickCheck
+      - base >= 4.7 && < 5
+      - containers
+      - genvalidity-hspec
+      - genvalidity-typed-uuid
+      - genvalidity-hspec-aeson
+      - genvalidity-mergeful
+      - hspec
+      - mergeful
+      - mtl
+      - random
+      - time
+      - typed-uuid
+      - uuid

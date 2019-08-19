@@ -1,0 +1,7 @@
+resolver: lts-14.1
+packages:
+  - mergeful
+  - genvalidity-mergeful
+extra-deps:
+  - typed-uuid-0.0.0.0
+  - genvalidity-typed-uuid-0.0.0.0

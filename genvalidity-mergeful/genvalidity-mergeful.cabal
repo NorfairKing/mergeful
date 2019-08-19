@@ -1,0 +1,68 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.1.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: b94c1071ebee857316a096cf56b67dba7381bd071cce7109290a30ee7af3c2f5
+
+name:           genvalidity-mergeful
+version:        0.0.0.0
+description:    Please see the README on GitHub at <https://github.com/NorfairKing/mergeful#readme>
+homepage:       https://github.com/NorfairKing/mergeful#readme
+bug-reports:    https://github.com/NorfairKing/mergeful/issues
+author:         Tom Sydney Kerckhove
+maintainer:     syd@cs-syd.eu
+copyright:      Copyright: (c) 2019 Tom Sydney Kerckhove
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/NorfairKing/mergeful
+
+library
+  exposed-modules:
+      Data.GenValidity.Mergeful
+  other-modules:
+      Paths_genvalidity_mergeful
+  hs-source-dirs:
+      src
+  build-depends:
+      QuickCheck
+    , base >=4.7 && <5
+    , genvalidity
+    , genvalidity-containers
+    , genvalidity-time
+    , mergeful
+  default-language: Haskell2010
+
+test-suite mergeful-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Data.MergefulSpec
+      Paths_genvalidity_mergeful
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , base >=4.7 && <5
+    , containers
+    , genvalidity-hspec
+    , genvalidity-hspec-aeson
+    , genvalidity-mergeful
+    , genvalidity-typed-uuid
+    , hspec
+    , mergeful
+    , mtl
+    , random
+    , time
+    , typed-uuid
+    , uuid
+  default-language: Haskell2010
