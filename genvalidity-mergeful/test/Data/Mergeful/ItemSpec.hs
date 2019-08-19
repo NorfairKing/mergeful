@@ -7,22 +7,12 @@ module Data.Mergeful.ItemSpec
   ) where
 
 import Data.Int (Int)
-import qualified Data.Map.Strict as M
-import qualified Data.Set as S
-import Data.Time
-import qualified Data.UUID.Typed as Typed
-import GHC.Generics (Generic)
-import System.Random
-
-import Control.Monad.State
 
 import Test.Hspec
 import Test.QuickCheck
 import Test.Validity
-import Test.Validity.Aeson
 
 import Data.GenValidity.UUID.Typed ()
-import Data.UUID.Typed
 
 import Data.GenValidity.Mergeful.Item
 import Data.Mergeful.Item
@@ -154,6 +144,7 @@ spec = do
               store2 `shouldBe` store1
               case resp of
                 ItemSyncResponseDesynchronised _st _ -> _st `shouldBe` st
+                _ -> expectationFailure "Should have noticed a desync"
   describe "syncing" $ do
     it "it always possible to add an item from scratch" $
       forAllValid $ \time1 ->
@@ -177,6 +168,7 @@ spec = do
               (resp2, sstore3) = processServerItemSync sstore2 req2
               cstore3 = mergeItemSyncResponseIgnoreProblems cstore2 resp2
           cstore2 `shouldBe` cstore3
+          sstore2 `shouldBe` sstore3
     it "succesfully syncs an addition across to a second client" $
       forAllValid $ \time1 ->
         forAllValid $ \i -> do
@@ -199,7 +191,6 @@ spec = do
           let req2 = makeItemSyncRequest cBstore1
           -- The server processes sync request 2
           let (resp2, sstore3) = processServerItemSync sstore2 req2
-          let time3 = incrementServerTime time2
           resp2 `shouldBe` ItemSyncResponseNewAtServer i time2
           sstore3 `shouldBe` ServerFull i time2
           -- Client B merges the response

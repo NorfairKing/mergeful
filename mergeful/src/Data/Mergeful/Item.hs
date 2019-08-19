@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
--- | A way to synchronise a single items without merge conflicts.
+-- | A way to synchronise a single item without merge conflicts.
 --
 -- The setup is as follows:
 --
@@ -47,8 +47,6 @@ import GHC.Generics (Generic)
 
 import Data.Validity
 import Data.Word
-
-import Control.Exception (assert)
 
 data ClientItem a
   = ClientEmpty
@@ -189,42 +187,39 @@ data MergeResult a
 
 mergeItemSyncResponseRaw :: ClientItem a -> ItemSyncResponse a -> MergeResult a
 mergeItemSyncResponseRaw cs sr =
-  let conflict = cs
-      desync = cs
-      mismatch = cs
-   in case cs of
-        ClientEmpty ->
-          case sr of
-            ItemSyncResponseInSyncEmpty -> MergeSuccess cs
-            ItemSyncResponseNewAtServer i st -> MergeSuccess $ ClientItemSynced i st
-            ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
-            _ -> MergeMismatch
-        ClientAdded ci ->
-          case sr of
-            ItemSyncResponseSuccesfullyAdded st -> MergeSuccess $ ClientItemSynced ci st
-            ItemSyncResponseConflict si -> MergeConflict ci si
-            ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
-            _ -> MergeMismatch
-        ClientItemSynced ci ct ->
-          case sr of
-            ItemSyncResponseInSyncFull -> MergeSuccess $ ClientItemSynced ci ct
-            ItemSyncResponseModifiedAtServer si st -> MergeSuccess $ ClientItemSynced si st
-            ItemSyncResponseDeletedAtServer -> MergeSuccess ClientEmpty
-            ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
-            _ -> MergeMismatch
-        ClientItemSyncedButChanged ci ct ->
-          case sr of
-            ItemSyncResponseSuccesfullyChanged st -> MergeSuccess $ ClientItemSynced ci st
-            ItemSyncResponseConflict si -> MergeConflict ci si
-            ItemSyncResponseConflictServerDeleted -> MergeConflictServerDeleted ci
-            ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
-            _ -> MergeMismatch
-        ClientDeleted ct ->
-          case sr of
-            ItemSyncResponseSuccesfullyDeleted -> MergeSuccess ClientEmpty
-            ItemSyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
-            ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
-            _ -> MergeMismatch
+  case cs of
+    ClientEmpty ->
+      case sr of
+        ItemSyncResponseInSyncEmpty -> MergeSuccess cs
+        ItemSyncResponseNewAtServer i st -> MergeSuccess $ ClientItemSynced i st
+        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
+        _ -> MergeMismatch
+    ClientAdded ci ->
+      case sr of
+        ItemSyncResponseSuccesfullyAdded st -> MergeSuccess $ ClientItemSynced ci st
+        ItemSyncResponseConflict si -> MergeConflict ci si
+        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
+        _ -> MergeMismatch
+    ClientItemSynced ci ct ->
+      case sr of
+        ItemSyncResponseInSyncFull -> MergeSuccess $ ClientItemSynced ci ct
+        ItemSyncResponseModifiedAtServer si st -> MergeSuccess $ ClientItemSynced si st
+        ItemSyncResponseDeletedAtServer -> MergeSuccess ClientEmpty
+        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
+        _ -> MergeMismatch
+    ClientItemSyncedButChanged ci _ ->
+      case sr of
+        ItemSyncResponseSuccesfullyChanged st -> MergeSuccess $ ClientItemSynced ci st
+        ItemSyncResponseConflict si -> MergeConflict ci si
+        ItemSyncResponseConflictServerDeleted -> MergeConflictServerDeleted ci
+        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
+        _ -> MergeMismatch
+    ClientDeleted _ ->
+      case sr of
+        ItemSyncResponseSuccesfullyDeleted -> MergeSuccess ClientEmpty
+        ItemSyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
+        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
+        _ -> MergeMismatch
 
 mergeItemSyncResponseIgnoreProblems :: ClientItem a -> ItemSyncResponse a -> ClientItem a
 mergeItemSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeItemSyncResponseRaw cs
@@ -271,7 +266,7 @@ processServerItemSync store sr =
                   -- the server will just instruct the client to delete its item too.
                   -- No conflict here.
                  -> (ItemSyncResponseDeletedAtServer, store)
-            ItemSyncRequestKnownButChanged ci ct ->
+            ItemSyncRequestKnownButChanged _ ct ->
               case compare ct st of
                 GT
                   -- The client time is greater than the server time.
@@ -294,7 +289,7 @@ processServerItemSync store sr =
                   -- Given that the client indicates that it *did* change its item locally,
                   -- there is a conflict.
                  -> (ItemSyncResponseConflictServerDeleted, store)
-            ItemSyncRequestDeletedLocally ct -> (ItemSyncResponseDesynchronised st Nothing, store)
+            ItemSyncRequestDeletedLocally _ -> (ItemSyncResponseDesynchronised st Nothing, store)
     ServerFull si st ->
       let t = incrementServerTime st
        in case sr of
@@ -303,11 +298,11 @@ processServerItemSync store sr =
               -- This means that the server has synced with another client before,
               -- so we can just send the item to the client.
              -> (ItemSyncResponseNewAtServer si st, store)
-            ItemSyncRequestNew ci
+            ItemSyncRequestNew _
               -- The client has a newly added item, so it thought it was empty before that,
               -- but the server has already synced with another client before.
-              -- Unless the two items are equal, this indicates a conflict.
-              -- The server is always right, so it will remain unmodified.
+              -- This indicates a conflict.
+              -- The server is always right, so the item at the server will remain unmodified.
               -- The client will receive the conflict.
              -> (ItemSyncResponseConflict si, store)
             ItemSyncRequestKnown ct ->
