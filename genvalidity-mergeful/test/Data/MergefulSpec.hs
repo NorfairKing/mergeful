@@ -37,7 +37,6 @@ spec = do
   genValidSpec @ServerTime
   genValidSpec @(ClientStore Int)
   genValidSpec @(ServerStore Int)
-  genValidSpec @(ServerState Int)
   genValidSpec @(SyncRequest Int)
   genValidSpec @(SyncResponse Int)
   describe "initialServerTime" $ it "is valid" $ shouldBeValid initialServerTime
@@ -50,7 +49,7 @@ spec = do
     it "produces valid responses and stores" $ producesValidsOnValids2 (processServerSync @Int)
     it "makes no changes if the sync request reflects the state of the empty server" $
       forAllValid $ \st -> do
-        let store1 = ServerState st $ ServerEmpty st
+        let store1 = ServerEmpty st
             req = SyncRequestPoll
         let (resp, store2) = processServerSync @Int store1 req
         store2 `shouldBe` store1
@@ -58,7 +57,7 @@ spec = do
     it "makes no changes if the sync request reflects the state of the full server" $
       forAllValid $ \i ->
         forAllValid $ \st -> do
-          let store1 = ServerState st $ ServerFull i st
+          let store1 = ServerFull i st
               req = SyncRequestKnown st
           let (resp, store2) = processServerSync @Int store1 req
           store2 `shouldBe` store1
@@ -67,36 +66,36 @@ spec = do
       it "adds the item that the client tells the server to add" $
         forAllValid $ \i ->
           forAllValid $ \st -> do
-            let store1 = ServerState st $ ServerEmpty st
+            let store1 = ServerEmpty st
                 req = SyncRequestNew i
             let (resp, store2) = processServerSync @Int store1 req
             let time = incrementServerTime st
-            store2 `shouldBe` ServerState time (ServerFull i time)
+            store2 `shouldBe` ServerFull i time
             resp `shouldBe` SyncResponseSuccesfullyAdded time
       it "changes the item that the client tells the server to change" $
         forAllValid $ \i ->
           forAllValid $ \j ->
             forAllValid $ \st -> do
-              let store1 = ServerState st $ ServerFull i st
+              let store1 = ServerFull i st
                   req = SyncRequestKnownButChanged j st
               let (resp, store2) = processServerSync @Int store1 req
               let time = incrementServerTime st
-              store2 `shouldBe` ServerState time (ServerFull j time)
+              store2 `shouldBe` ServerFull j time
               resp `shouldBe` SyncResponseSuccesfullyChanged time
       it "deletes the item that the client tells the server to delete" $
         forAllValid $ \i ->
           forAllValid $ \st -> do
-            let store1 = ServerState st $ ServerFull i st
+            let store1 = ServerFull i st
                 req = SyncRequestDeletedLocally st
             let (resp, store2) = processServerSync @Int store1 req
             let time = incrementServerTime st
-            store2 `shouldBe` ServerState time (ServerEmpty time)
+            store2 `shouldBe` ServerEmpty time
             resp `shouldBe` SyncResponseSuccesfullyDeleted
     describe "Server changes" $ do
       it "tells the client that there is a new item at the server side" $ do
         forAllValid $ \i ->
           forAllValid $ \st -> do
-            let store1 = ServerState st $ ServerFull i st
+            let store1 = ServerFull i st
                 req = SyncRequestPoll
             let (resp, store2) = processServerSync @Int store1 req
             store2 `shouldBe` store1
@@ -104,14 +103,14 @@ spec = do
       it "tells the client that there is a modified item at the server side" $ do
         forAllValid $ \i ->
           forAllSubsequent $ \(st, st') -> do
-            let store1 = ServerState st' $ ServerFull i st'
+            let store1 = ServerFull i st'
                 req = SyncRequestKnown st
             let (resp, store2) = processServerSync @Int store1 req
             store2 `shouldBe` store1
             resp `shouldBe` SyncResponseModifiedAtServer i st'
       it "tells the client that there is a deleted item at the server side" $ do
         forAllSubsequent $ \(st, st') -> do
-          let store1 = ServerState st' $ ServerEmpty st'
+          let store1 = ServerEmpty st'
               req = SyncRequestKnown st
           let (resp, store2) = processServerSync @Int store1 req
           store2 `shouldBe` store1
@@ -121,7 +120,7 @@ spec = do
         forAllValid $ \i ->
           forAllValid $ \j ->
             forAllSubsequent $ \(st, st') -> do
-              let store1 = ServerState st' $ ServerFull i st'
+              let store1 = ServerFull i st'
                   req = SyncRequestKnownButChanged j st
               let (resp, store2) = processServerSync @Int store1 req
               store2 `shouldBe` store1
@@ -130,7 +129,7 @@ spec = do
         "notices a server-deleted-conflict if the client has a deleted item and server has a modified item" $
         forAllValid $ \i ->
           forAllSubsequent $ \(st, st') -> do
-            let store1 = ServerState st' $ ServerFull i st'
+            let store1 = ServerFull i st'
                 req = SyncRequestDeletedLocally st
             let (resp, store2) = processServerSync @Int store1 req
             store2 `shouldBe` store1
@@ -139,7 +138,7 @@ spec = do
         "notices a server-deleted-conflict if the client has a modified item and server has no item" $
         forAllValid $ \i ->
           forAllSubsequent $ \(st, st') -> do
-            let store1 = ServerState st' $ ServerEmpty st'
+            let store1 = ServerEmpty st'
                 req = SyncRequestKnownButChanged i st
             let (resp, store2) = processServerSync @Int store1 req
             store2 `shouldBe` store1
@@ -147,7 +146,7 @@ spec = do
     describe "Desyncs" $ do
       it "notices a desync if the client is somehow ahead of the server" $
         forAllSubsequent $ \(st, st') ->
-          forAll (stateAt st) $ \store1 ->
+          forAll (storeAt st) $ \store1 ->
             forAll (reqAt st') $ \req -> do
               let (resp, store2) = processServerSync @Int store1 req
               store2 `shouldBe` store1
@@ -155,16 +154,17 @@ spec = do
                 SyncResponseDesynchronised _st _ -> _st `shouldBe` st
   describe "syncing" $ do
     it "it always possible to add an item from scratch" $
-      forAllValid $ \i -> do
-        let cstore1 = ClientAdded (i :: Int)
-        let sstore1 = initialServerState
-        let req1 = makeSyncRequest cstore1
-            (resp1, sstore2) = processServerSync sstore1 req1
-            cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp1
-        let time = incrementServerTime initialServerTime -- A change occurred, so we need to increment.
-        resp1 `shouldBe` SyncResponseSuccesfullyAdded time
-        sstore2 `shouldBe` ServerState time (ServerFull i time)
-        cstore2 `shouldBe` ClientSynced i time
+      forAllValid $ \time1 ->
+        forAllValid $ \i -> do
+          let cstore1 = ClientAdded (i :: Int)
+          let sstore1 = ServerEmpty time1
+          let req1 = makeSyncRequest cstore1
+              (resp1, sstore2) = processServerSync sstore1 req1
+              cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp1
+          let time2 = incrementServerTime time1 -- A change occurred, so we need to increment.
+          resp1 `shouldBe` SyncResponseSuccesfullyAdded time2
+          sstore2 `shouldBe` ServerFull i time2
+          cstore2 `shouldBe` ClientSynced i time2
     it "is idempotent with one client" $
       forAllValid $ \cstore1 ->
         forAllValid $ \sstore1 -> do
@@ -176,35 +176,35 @@ spec = do
               cstore3 = mergeSyncResponseIgnoreProblems cstore2 resp2
           cstore2 `shouldBe` cstore3
     it "succesfully syncs an addition across to a second client" $
-      forAllValid $ \i -> do
-        let cAstore1 = ClientAdded i
+      forAllValid $ \time1 ->
+        forAllValid $ \i -> do
+          let cAstore1 = ClientAdded i
         -- Client B is empty
-        let cBstore1 = ClientEmpty
+          let cBstore1 = ClientEmpty
         -- The server is empty
-        let time1 = initialServerTime
-        let sstore1 = initialServerState
+          let sstore1 = ServerEmpty time1
         -- Client A makes sync request 1
-        let req1 = makeSyncRequest cAstore1
+          let req1 = makeSyncRequest cAstore1
         -- The server processes sync request 1
-        let (resp1, sstore2) = processServerSync @Int sstore1 req1
-        let time2 = incrementServerTime time1
-        resp1 `shouldBe` SyncResponseSuccesfullyAdded time2
-        sstore2 `shouldBe` ServerState time2 (ServerFull i time2)
+          let (resp1, sstore2) = processServerSync @Int sstore1 req1
+          let time2 = incrementServerTime time1
+          resp1 `shouldBe` SyncResponseSuccesfullyAdded time2
+          sstore2 `shouldBe` ServerFull i time2
         -- Client A merges the response
-        let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
-        cAstore2 `shouldBe` ClientSynced i time2
+          let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
+          cAstore2 `shouldBe` ClientSynced i time2
         -- Client B makes sync request 2
-        let req2 = makeSyncRequest cBstore1
+          let req2 = makeSyncRequest cBstore1
         -- The server processes sync request 2
-        let (resp2, sstore3) = processServerSync sstore2 req2
-        let time3 = incrementServerTime time2
-        resp2 `shouldBe` SyncResponseNewAtServer i time2
-        sstore3 `shouldBe` ServerState time2 (ServerFull i time2)
+          let (resp2, sstore3) = processServerSync sstore2 req2
+          let time3 = incrementServerTime time2
+          resp2 `shouldBe` SyncResponseNewAtServer i time2
+          sstore3 `shouldBe` ServerFull i time2
         -- Client B merges the response
-        let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
-        cBstore2 `shouldBe` ClientSynced i time2
+          let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
+          cBstore2 `shouldBe` ClientSynced i time2
         -- Client A and Client B now have the same store
-        cAstore2 `shouldBe` cBstore2
+          cAstore2 `shouldBe` cBstore2
     it "succesfully syncs a modification across to a second client" $
       forAllValid $ \time1 ->
         forAllValid $ \i ->
@@ -213,14 +213,14 @@ spec = do
             -- Client B had synced that same item, but has since modified it
             let cBstore1 = ClientSyncedButChanged j time1
             -- The server is has the item that both clients had before
-            let sstore1 = ServerState time1 $ ServerFull i time1
+            let sstore1 = ServerFull i time1
             -- Client B makes sync request 1
             let req1 = makeSyncRequest cBstore1
             -- The server processes sync request 1
             let (resp1, sstore2) = processServerSync @Int sstore1 req1
             let time2 = incrementServerTime time1
             resp1 `shouldBe` SyncResponseSuccesfullyChanged time2
-            sstore2 `shouldBe` ServerState time2 (ServerFull j time2)
+            sstore2 `shouldBe` ServerFull j time2
             -- Client B merges the response
             let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
             cBstore2 `shouldBe` ClientSynced j time2
@@ -229,7 +229,7 @@ spec = do
             -- The server processes sync request 2
             let (resp2, sstore3) = processServerSync sstore2 req2
             resp2 `shouldBe` SyncResponseModifiedAtServer j time2
-            sstore3 `shouldBe` ServerState time2 (ServerFull j time2)
+            sstore3 `shouldBe` ServerFull j time2
             -- Client A merges the response
             let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
             cAstore2 `shouldBe` ClientSynced j time2
@@ -242,14 +242,14 @@ spec = do
           -- Client B had synced that same item, but has since deleted it
           let cBstore1 = ClientDeleted time1
           -- The server still has the undeleted item
-          let sstore1 = ServerState time1 $ ServerFull i time1
+          let sstore1 = ServerFull i time1
           -- Client B makes sync request 1
           let req1 = makeSyncRequest cBstore1
           -- The server processes sync request 1
           let (resp1, sstore2) = processServerSync @Int sstore1 req1
           let time2 = incrementServerTime time1
           resp1 `shouldBe` SyncResponseSuccesfullyDeleted
-          sstore2 `shouldBe` ServerState time2 (ServerEmpty time2)
+          sstore2 `shouldBe` ServerEmpty time2
           -- Client B merges the response
           let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
           cBstore2 `shouldBe` ClientEmpty
@@ -258,7 +258,7 @@ spec = do
           -- The server processes sync request 2
           let (resp2, sstore3) = processServerSync sstore2 req2
           resp2 `shouldBe` SyncResponseDeletedAtServer
-          sstore3 `shouldBe` ServerState time2 (ServerEmpty time2)
+          sstore3 `shouldBe` ServerEmpty time2
           -- Client A merges the response
           let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
           cAstore2 `shouldBe` ClientEmpty

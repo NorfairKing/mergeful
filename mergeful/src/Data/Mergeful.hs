@@ -51,8 +51,6 @@ module Data.Mergeful
   , mergeSyncResponseRaw
   , mergeSyncResponseIgnoreProblems
   , ignoreMergeProblems
-  , ServerState(..)
-  , initialServerState
   , ServerTime(..)
   , initialServerTime
   , incrementServerTime
@@ -77,19 +75,6 @@ data ClientStore a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ClientStore a)
-
-data ServerState a =
-  ServerState
-    { serverStateTime :: ServerTime
-    , serverStateStore :: ServerStore a
-    }
-  deriving (Show, Eq, Generic)
-
-instance Validity a => Validity (ServerState a)
-
-initialServerState :: ServerState a
-initialServerState =
-  ServerState {serverStateTime = initialServerTime, serverStateStore = initialServerStore}
 
 newtype ServerTime =
   ServerTime
@@ -261,15 +246,14 @@ ignoreMergeProblems cs mr =
     MergeDesync _ _ -> cs
     MergeMismatch -> cs
 
-processServerSync :: ServerState a -> SyncRequest a -> (SyncResponse a, ServerState a)
-processServerSync state sr =
-  let t = incrementServerTime $ serverStateTime state -- The next time to use if the item has been updated
-      s store = ServerState {serverStateTime = t, serverStateStore = store}
-   in case serverStateStore state of
-        ServerEmpty st ->
-          case sr of
-            SyncRequestPoll -> (SyncResponseInSyncEmpty, state)
-            SyncRequestNew ci -> (SyncResponseSuccesfullyAdded t, s $ ServerFull ci t)
+processServerSync :: ServerStore a -> SyncRequest a -> (SyncResponse a, ServerStore a)
+processServerSync store sr =
+  case store of
+    ServerEmpty st ->
+      let t = incrementServerTime st
+       in case sr of
+            SyncRequestPoll -> (SyncResponseInSyncEmpty, store)
+            SyncRequestNew ci -> (SyncResponseSuccesfullyAdded t, ServerFull ci t)
             SyncRequestKnown ct ->
               case compare ct st of
                 GT
@@ -279,12 +263,12 @@ processServerSync state sr =
                   -- That is impossible in theory.
                   --
                   -- It indicates a desync.
-                 -> (SyncResponseDesynchronised st Nothing, state)
+                 -> (SyncResponseDesynchronised st Nothing, store)
                 EQ
                   -- The client time is equal to the server time.
                   -- This can only happen if the server somehow didn't update its
                   -- time (that would be a bug), or if a desync happened.
-                 -> (SyncResponseDesynchronised st Nothing, state)
+                 -> (SyncResponseDesynchronised st Nothing, store)
                 LT
                   -- The client time is less than the server time.
                   -- This indicates that the server synced with another client and was told to
@@ -293,7 +277,7 @@ processServerSync state sr =
                   -- Given that the client indicates that it did not change anything locally,
                   -- the server will just instruct the client to delete its item too.
                   -- No conflict here.
-                 -> (SyncResponseDeletedAtServer, state)
+                 -> (SyncResponseDeletedAtServer, store)
             SyncRequestKnownButChanged ci ct ->
               case compare ct st of
                 GT
@@ -303,12 +287,12 @@ processServerSync state sr =
                   -- That is impossible in theory.
                   --
                   -- It indicates a desync.
-                 -> (SyncResponseDesynchronised st Nothing, state)
+                 -> (SyncResponseDesynchronised st Nothing, store)
                 EQ
                   -- The client time is equal to the server time.
                   -- This can only happen if the server somehow didn't update its
                   -- time (that would be a bug), or if a desync happened.
-                 -> (SyncResponseDesynchronised st Nothing, state)
+                 -> (SyncResponseDesynchronised st Nothing, store)
                 LT
                   -- The client time is less than the server time.
                   -- This indicates that the server synced with another client and was told to
@@ -316,22 +300,23 @@ processServerSync state sr =
                   --
                   -- Given that the client indicates that it *did* change its item locally,
                   -- there is a conflict.
-                 -> (SyncResponseConflictServerDeleted, state)
-            SyncRequestDeletedLocally ct -> (SyncResponseDesynchronised st Nothing, state)
-        ServerFull si st ->
-          case sr of
+                 -> (SyncResponseConflictServerDeleted, store)
+            SyncRequestDeletedLocally ct -> (SyncResponseDesynchronised st Nothing, store)
+    ServerFull si st ->
+      let t = incrementServerTime st
+       in case sr of
             SyncRequestPoll
               -- The client is empty but the server is not.
               -- This means that the server has synced with another client before,
               -- so we can just send the item to the client.
-             -> (SyncResponseNewAtServer si st, state)
+             -> (SyncResponseNewAtServer si st, store)
             SyncRequestNew ci
               -- The client has a newly added item, so it thought it was empty before that,
               -- but the server has already synced with another client before.
               -- Unless the two items are equal, this indicates a conflict.
               -- The server is always right, so it will remain unmodified.
               -- The client will receive the conflict.
-             -> (SyncResponseConflict si, state)
+             -> (SyncResponseConflict si, store)
             SyncRequestKnown ct ->
               case compare ct st of
                 GT
@@ -341,21 +326,21 @@ processServerSync state sr =
                   -- That is impossible in theory.
                   --
                   -- It indicates a desync.
-                 -> (SyncResponseDesynchronised st (Just si), state)
+                 -> (SyncResponseDesynchronised st (Just si), store)
                 EQ
                   -- The client time is equal to the server time.
                   -- The client indicates that the item was not modified at their side.
                   -- This means that the items are in sync.
                   -- (Unless the server somehow modified the item but not its server time,
                   -- which would beconsidered a bug.)
-                 -> (SyncResponseInSyncFull, state)
+                 -> (SyncResponseInSyncFull, store)
                 LT
                   -- The client time is less than the server time
                   -- That means that the server has synced with another client in the meantime.
                   -- Since the client indicates that the item was not modified at their side,
                   -- we can just send it back to the client to have them update their version.
                   -- No conflict here.
-                 -> (SyncResponseModifiedAtServer si st, state)
+                 -> (SyncResponseModifiedAtServer si st, store)
             SyncRequestKnownButChanged ci ct ->
               case compare ct st of
                 GT
@@ -365,18 +350,18 @@ processServerSync state sr =
                   -- That is impossible in theory.
                   --
                   -- It indicates a desync.
-                 -> (SyncResponseDesynchronised st (Just si), state)
+                 -> (SyncResponseDesynchronised st (Just si), store)
                 EQ
                   -- The client time is equal to the server time.
                   -- The client indicates that the item *was* modified at their side.
                   -- This means that the server needs to be updated.
-                 -> (SyncResponseSuccesfullyChanged t, s $ ServerFull ci t)
+                 -> (SyncResponseSuccesfullyChanged t, ServerFull ci t)
                 LT
                   -- The client time is less than the server time
                   -- That means that the server has synced with another client in the meantime.
                   -- Since the client indicates that the item *was* modified at their side,
                   -- there is a conflict.
-                 -> (SyncResponseConflict si, state)
+                 -> (SyncResponseConflict si, store)
             SyncRequestDeletedLocally ct ->
               case compare ct st of
                 GT
@@ -386,15 +371,15 @@ processServerSync state sr =
                   -- That is impossible in theory.
                   --
                   -- It indicates a desync.
-                 -> (SyncResponseDesynchronised st (Just si), state)
+                 -> (SyncResponseDesynchronised st (Just si), store)
                 EQ
                   -- The client time is equal to the server time.
                   -- The client indicates that the item was deleted on their side.
                   -- This means that the server item needs to be deleted as well.
-                 -> (SyncResponseSuccesfullyDeleted, s $ ServerEmpty t)
+                 -> (SyncResponseSuccesfullyDeleted, ServerEmpty t)
                 LT
                   -- The client time is less than the server time
                   -- That means that the server has synced with another client in the meantime.
                   -- Since the client indicates that the item was deleted at their side,
                   -- there is a conflict.
-                 -> (SyncResponseConflictClientDeleted si, state)
+                 -> (SyncResponseConflictClientDeleted si, store)
