@@ -21,15 +21,14 @@ import Test.QuickCheck
 import Test.Validity
 import Test.Validity.Aeson
 
-import Data.GenValidity.Mergeful ()
+import Data.GenValidity.Mergeful
 import Data.GenValidity.UUID.Typed ()
 import Data.Mergeful
 import Data.UUID.Typed
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
-forAllNext func = forAllValid $ \st -> func (st, incrementServerTime st)
-
+-- forAllNext func = forAllValid $ \st -> func (st, incrementServerTime st)
 forAllSubsequent func =
   forAllValid $ \st -> forAll (genValid `suchThat` (> st)) $ \st' -> func (st, st')
 
@@ -75,7 +74,7 @@ spec = do
             resp `shouldBe` SyncResponseSuccesfullyAdded time
       it "changes the item that the client tells the server to change" $
         forAllValid $ \i ->
-          forAll (genValid `suchThat` (/= i)) $ \j ->
+          forAllValid $ \j ->
             forAllValid $ \st -> do
               let store1 = ServerState st $ ServerFull i st
                   req = SyncRequestKnownButChanged j st
@@ -110,12 +109,49 @@ spec = do
             store2 `shouldBe` store1
             resp `shouldBe` SyncResponseModifiedAtServer i st'
       it "tells the client that there is a deleted item at the server side" $ do
+        forAllSubsequent $ \(st, st') -> do
+          let store1 = ServerState st' $ ServerEmpty st'
+              req = SyncRequestKnown st
+          let (resp, store2) = processServerSync @Int store1 req
+          store2 `shouldBe` store1
+          resp `shouldBe` SyncResponseDeletedAtServer
+    describe "Conflicts" $ do
+      it "notices a conflict if the client and server are trying to sync different items" $
+        forAllValid $ \i ->
+          forAllValid $ \j ->
+            forAllSubsequent $ \(st, st') -> do
+              let store1 = ServerState st' $ ServerFull i st'
+                  req = SyncRequestKnownButChanged j st
+              let (resp, store2) = processServerSync @Int store1 req
+              store2 `shouldBe` store1
+              resp `shouldBe` SyncResponseConflict i
+      it
+        "notices a server-deleted-conflict if the client has a deleted item and server has a modified item" $
+        forAllValid $ \i ->
           forAllSubsequent $ \(st, st') -> do
-            let store1 = ServerState st' $ ServerEmpty st'
-                req = SyncRequestKnown  st
+            let store1 = ServerState st' $ ServerFull i st'
+                req = SyncRequestDeletedLocally st
             let (resp, store2) = processServerSync @Int store1 req
             store2 `shouldBe` store1
-            resp `shouldBe` SyncResponseDeletedAtServer
+            resp `shouldBe` SyncResponseConflictClientDeleted i
+      it
+        "notices a server-deleted-conflict if the client has a modified item and server has no item" $
+        forAllValid $ \i ->
+          forAllSubsequent $ \(st, st') -> do
+            let store1 = ServerState st' $ ServerEmpty st'
+                req = SyncRequestKnownButChanged i st
+            let (resp, store2) = processServerSync @Int store1 req
+            store2 `shouldBe` store1
+            resp `shouldBe` SyncResponseConflictServerDeleted
+    describe "Desyncs" $ do
+      it "notices a desync if the client is somehow ahead of the server" $
+        forAllSubsequent $ \(st, st') ->
+          forAll (stateAt st) $ \store1 ->
+            forAll (reqAt st') $ \req -> do
+              let (resp, store2) = processServerSync @Int store1 req
+              store2 `shouldBe` store1
+              case resp of
+                SyncResponseDesynchronised _st _ -> _st `shouldBe` st
   describe "syncing" $ do
     it "it always possible to add an item from scratch" $
       forAllValid $ \i -> do
