@@ -44,7 +44,8 @@ spec = do
   describe "makeSyncRequest" $
     it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @Int)
   describe "mergeSyncResponseIgnoreProblems" $
-    it "produces valid client stores" $ producesValidsOnValids2 (mergeSyncResponseIgnoreProblems @Int)
+    it "produces valid client stores" $
+    producesValidsOnValids2 (mergeSyncResponseIgnoreProblems @Int)
   describe "processServerSync" $ do
     it "produces valid responses and stores" $ producesValidsOnValids2 (processServerSync @Int)
     it "makes no changes if the sync request reflects the state of the empty server" $

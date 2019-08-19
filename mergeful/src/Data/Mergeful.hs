@@ -47,10 +47,10 @@ module Data.Mergeful
   , SyncRequest(..)
   , makeSyncRequest
   , SyncResponse(..)
+  , MergeResult(..)
+  , mergeSyncResponseRaw
   , mergeSyncResponseIgnoreProblems
   , ignoreMergeProblems
-  , mergeSyncResponseRaw
-  , MergeResult(..)
   , ServerState(..)
   , initialServerState
   , ServerTime(..)
