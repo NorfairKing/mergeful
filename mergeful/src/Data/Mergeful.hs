@@ -182,16 +182,25 @@ makeSyncRequest cs =
     ClientDeleted st -> SyncRequestDeletedLocally st
 
 data MergeResult a
+  -- | The merger went succesfully, no conflicts or desyncs
   = MergeSuccess (ClientStore a)
+  -- | There was a merge conflict. The server and client had different, conflicting versions.
   | MergeConflict
       a -- ^ The item at the client side
       a -- ^ The item at the server side
+  -- | There was a merge conflict. The client had deleted the item while the server had modified it.
   | MergeConflictClientDeleted a -- ^ The item at the server side
+  -- | There was a merge conflict. The server had deleted the item while the client had modified it.
   | MergeConflictServerDeleted a -- ^ The item at the client side
+  -- | A desync was detected.
+  --
+  -- This only occurs if the server's time has been reset
+  -- or if a client syncs with multiple servers with the same server time.
   | MergeDesync
       ServerTime -- ^ Server time
       (Maybe a) -- ^ Item at the server side
-  | MergeMismatch -- ^ There was a mismatch between the server's response and the client's request.
+  -- | The server responded with a response that did not make sense given the client's request.
+  | MergeMismatch
   deriving (Show, Eq, Generic)
 
 mergeSyncResponseRaw :: ClientStore a -> SyncResponse a -> MergeResult a
