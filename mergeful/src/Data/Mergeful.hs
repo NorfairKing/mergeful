@@ -47,7 +47,10 @@ module Data.Mergeful
   , SyncRequest(..)
   , makeSyncRequest
   , SyncResponse(..)
-  , mergeSyncResponse
+  , mergeSyncResponseIgnoreProblems
+  , ignoreMergeProblems
+  , mergeSyncResponseRaw
+  , MergeResult(..)
   , ServerState(..)
   , initialServerState
   , ServerTime(..)
@@ -193,48 +196,71 @@ makeSyncRequest cs =
     ClientSyncedButChanged i st -> SyncRequestKnownButChanged i st
     ClientDeleted _ st -> SyncRequestDeletedLocally st
 
-mergeSyncResponse :: ClientStore a -> SyncResponse a -> ClientStore a
-mergeSyncResponse = mergeSyncResponseIgnoreProblems
+data MergeResult a
+  = MergeSuccess (ClientStore a)
+  | MergeConflict
+      a -- ^ The item at the client side
+      a -- ^ The item at the server side
+  | MergeConflictClientDeleted a -- ^ The item at the server side
+  | MergeConflictServerDeleted a -- ^ The item at the client side
+  | MergeDesync
+      ServerTime -- ^ Server time
+      (Maybe a) -- ^ Item at the server side
+  | MergeMismatch -- ^ There was a mismatch between the server's response and the client's request.
+  deriving (Show, Eq, Generic)
 
-mergeSyncResponseIgnoreProblems :: ClientStore a -> SyncResponse a -> ClientStore a
-mergeSyncResponseIgnoreProblems cs sr =
+mergeSyncResponseRaw :: ClientStore a -> SyncResponse a -> MergeResult a
+mergeSyncResponseRaw cs sr =
   let conflict = cs
       desync = cs
       mismatch = cs
    in case cs of
         ClientEmpty ->
           case sr of
-            SyncResponseInSyncEmpty -> cs
-            SyncResponseNewAtServer i st -> ClientSynced i st
-            SyncResponseConflictClientDeleted _ -> conflict
-            SyncResponseDesynchronised _ _ -> desync
-            _ -> mismatch
+            SyncResponseInSyncEmpty -> MergeSuccess cs
+            SyncResponseNewAtServer i st -> MergeSuccess $ ClientSynced i st
+            SyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
+            SyncResponseDesynchronised st msi -> MergeDesync st msi
+            _ -> MergeMismatch
         ClientAdded ci ->
           case sr of
-            SyncResponseSuccesfullyAdded st -> ClientSynced ci st
-            SyncResponseConflict _ -> conflict
-            SyncResponseDesynchronised _ _ -> desync
-            _ -> mismatch
+            SyncResponseSuccesfullyAdded st -> MergeSuccess $ ClientSynced ci st
+            SyncResponseConflict si -> MergeConflict ci si
+            SyncResponseDesynchronised st msi -> MergeDesync st msi
+            _ -> MergeMismatch
         ClientSynced ci ct ->
           case sr of
-            SyncResponseInSyncFull -> ClientSynced ci ct
-            SyncResponseModifiedAtServer si st -> ClientSynced si st
-            SyncResponseDeletedAtServer -> ClientEmpty
-            SyncResponseDesynchronised _ _ -> desync
-            _ -> mismatch
+            SyncResponseInSyncFull -> MergeSuccess $ ClientSynced ci ct
+            SyncResponseModifiedAtServer si st -> MergeSuccess $ ClientSynced si st
+            SyncResponseDeletedAtServer -> MergeSuccess ClientEmpty
+            SyncResponseDesynchronised st msi -> MergeDesync st msi
+            _ -> MergeMismatch
         ClientSyncedButChanged ci ct ->
           case sr of
-            SyncResponseSuccesfullyChanged st -> ClientSynced ci st
-            SyncResponseConflict _ -> conflict
-            SyncResponseConflictServerDeleted -> conflict
-            SyncResponseDesynchronised _ _ -> desync
-            _ -> mismatch
+            SyncResponseSuccesfullyChanged st -> MergeSuccess $ ClientSynced ci st
+            SyncResponseConflict si -> MergeConflict ci si
+            SyncResponseConflictServerDeleted -> MergeConflictServerDeleted ci
+            SyncResponseDesynchronised st msi -> MergeDesync st msi
+            _ -> MergeMismatch
         ClientDeleted ci ct ->
           case sr of
-            SyncResponseSuccesfullyDeleted -> ClientEmpty
-            SyncResponseConflictServerDeleted -> conflict
-            SyncResponseDesynchronised _ _ -> desync
-            _ -> mismatch
+            SyncResponseSuccesfullyDeleted -> MergeSuccess ClientEmpty
+            SyncResponseConflictServerDeleted -> MergeConflictServerDeleted ci
+            SyncResponseDesynchronised st msi -> MergeDesync st msi
+            _ -> MergeMismatch
+
+mergeSyncResponseIgnoreProblems :: ClientStore a -> SyncResponse a -> ClientStore a
+mergeSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeSyncResponseRaw cs
+
+ignoreMergeProblems :: ClientStore a -> MergeResult a -> ClientStore a
+ignoreMergeProblems cs mr =
+  case mr of
+    MergeSuccess cs' -> cs'
+    MergeConflict _ _ -> cs
+    MergeConflictServerDeleted _ -> cs
+    MergeConflictClientDeleted _ -> cs
+    MergeDesync _ _ -> cs
+    MergeMismatch -> cs
 
 processServerSync :: ServerState a -> SyncRequest a -> (SyncResponse a, ServerState a)
 processServerSync state sr =

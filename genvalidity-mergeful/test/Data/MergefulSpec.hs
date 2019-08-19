@@ -43,8 +43,8 @@ spec = do
   describe "initialServerTime" $ it "is valid" $ shouldBeValid initialServerTime
   describe "makeSyncRequest" $
     it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @Int)
-  describe "mergeSyncResponse" $
-    it "produces valid client stores" $ producesValidsOnValids2 (mergeSyncResponse @Int)
+  describe "mergeSyncResponseIgnoreProblems" $
+    it "produces valid client stores" $ producesValidsOnValids2 (mergeSyncResponseIgnoreProblems @Int)
   describe "processServerSync" $ do
     it "produces valid responses and stores" $ producesValidsOnValids2 (processServerSync @Int)
     it "makes no changes if the sync request reflects the state of the empty server" $
@@ -159,7 +159,7 @@ spec = do
         let sstore1 = initialServerState
         let req1 = makeSyncRequest cstore1
             (resp1, sstore2) = processServerSync sstore1 req1
-            cstore2 = mergeSyncResponse cstore1 resp1
+            cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp1
         let time = incrementServerTime initialServerTime -- A change occurred, so we need to increment.
         resp1 `shouldBe` SyncResponseSuccesfullyAdded time
         sstore2 `shouldBe` ServerState time (ServerFull i time)
@@ -169,10 +169,10 @@ spec = do
         forAllValid $ \sstore1 -> do
           let req1 = makeSyncRequest (cstore1 :: ClientStore Int)
               (resp1, sstore2) = processServerSync sstore1 req1
-              cstore2 = mergeSyncResponse cstore1 resp1
+              cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp1
               req2 = makeSyncRequest cstore2
               (resp2, sstore3) = processServerSync sstore2 req2
-              cstore3 = mergeSyncResponse cstore2 resp2
+              cstore3 = mergeSyncResponseIgnoreProblems cstore2 resp2
           cstore2 `shouldBe` cstore3
     it "succesfully syncs a single item across to a second client" $ do
       forAllValid $ \i -> do
@@ -190,7 +190,7 @@ spec = do
         resp1 `shouldBe` SyncResponseSuccesfullyAdded time2
         sstore2 `shouldBe` ServerState time2 (ServerFull i time2)
         -- Client A merges the response
-        let cAstore2 = mergeSyncResponse cAstore1 resp1
+        let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
         cAstore2 `shouldBe` ClientSynced i time2
         -- Client B makes sync request 2
         let req2 = makeSyncRequest cBstore1
@@ -200,7 +200,7 @@ spec = do
         resp2 `shouldBe` SyncResponseNewAtServer i time2
         sstore3 `shouldBe` ServerState time2 (ServerFull i time2)
         -- Client B merges the response
-        let cBstore2 = mergeSyncResponse cBstore1 resp2
+        let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
         cBstore2 `shouldBe` ClientSynced i time2
         -- Client A and Client B now have the same store
         cAstore2 `shouldBe` cBstore2
