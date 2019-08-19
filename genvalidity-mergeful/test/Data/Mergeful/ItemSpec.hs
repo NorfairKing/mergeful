@@ -55,7 +55,7 @@ spec = do
             req = ItemSyncRequestPoll
         let (resp, store2) = processServerItemSync @Int store1 req
         store2 `shouldBe` store1
-        resp `shouldBe` ItemSyncResponseInItemSyncEmpty
+        resp `shouldBe` ItemSyncResponseInSyncEmpty
     it "makes no changes if the sync request reflects the state of the full server" $
       forAllValid $ \i ->
         forAllValid $ \st -> do
@@ -63,7 +63,7 @@ spec = do
               req = ItemSyncRequestKnown st
           let (resp, store2) = processServerItemSync @Int store1 req
           store2 `shouldBe` store1
-          resp `shouldBe` ItemSyncResponseInItemSyncFull
+          resp `shouldBe` ItemSyncResponseInSyncFull
     describe "Client changes" $ do
       it "adds the item that the client tells the server to add" $
         forAllValid $ \i ->

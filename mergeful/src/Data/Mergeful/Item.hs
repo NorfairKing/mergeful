@@ -98,11 +98,11 @@ data ItemSyncResponse a
   -- | The client and server are fully in sync, and both empty
   --
   -- Nothing needs to be done at the client side.
-  = ItemSyncResponseInItemSyncEmpty
+  = ItemSyncResponseInSyncEmpty
   -- | The client and server are fully in sync.
   --
   -- Nothing needs to be done at the client side.
-  | ItemSyncResponseInItemSyncFull
+  | ItemSyncResponseInSyncFull
   -- | The client added an item and server has succesfully been made aware of that.
   --
   -- The client needs to update its server time
@@ -195,7 +195,7 @@ mergeItemSyncResponseRaw cs sr =
    in case cs of
         ClientEmpty ->
           case sr of
-            ItemSyncResponseInItemSyncEmpty -> MergeSuccess cs
+            ItemSyncResponseInSyncEmpty -> MergeSuccess cs
             ItemSyncResponseNewAtServer i st -> MergeSuccess $ ClientItemSynced i st
             ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
             _ -> MergeMismatch
@@ -207,7 +207,7 @@ mergeItemSyncResponseRaw cs sr =
             _ -> MergeMismatch
         ClientItemSynced ci ct ->
           case sr of
-            ItemSyncResponseInItemSyncFull -> MergeSuccess $ ClientItemSynced ci ct
+            ItemSyncResponseInSyncFull -> MergeSuccess $ ClientItemSynced ci ct
             ItemSyncResponseModifiedAtServer si st -> MergeSuccess $ ClientItemSynced si st
             ItemSyncResponseDeletedAtServer -> MergeSuccess ClientEmpty
             ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
@@ -245,7 +245,7 @@ processServerItemSync store sr =
     ServerEmpty st ->
       let t = incrementServerTime st
        in case sr of
-            ItemSyncRequestPoll -> (ItemSyncResponseInItemSyncEmpty, store)
+            ItemSyncRequestPoll -> (ItemSyncResponseInSyncEmpty, store)
             ItemSyncRequestNew ci -> (ItemSyncResponseSuccesfullyAdded t, ServerFull ci t)
             ItemSyncRequestKnown ct ->
               case compare ct st of
@@ -326,7 +326,7 @@ processServerItemSync store sr =
                   -- This means that the items are in sync.
                   -- (Unless the server somehow modified the item but not its server time,
                   -- which would beconsidered a bug.)
-                 -> (ItemSyncResponseInItemSyncFull, store)
+                 -> (ItemSyncResponseInSyncFull, store)
                 LT
                   -- The client time is less than the server time
                   -- That means that the server has synced with another client in the meantime.
