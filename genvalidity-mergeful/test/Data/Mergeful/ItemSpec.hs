@@ -1,21 +1,16 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Data.Mergeful.ItemSpec
   ( spec
   ) where
 
-import Data.Int (Int)
-
 import Test.Hspec
 import Test.QuickCheck
 import Test.Validity
 
-import Data.GenValidity.UUID.Typed ()
+import Data.Mergeful.Item
 
 import Data.GenValidity.Mergeful.Item
-import Data.Mergeful.Item
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
@@ -34,6 +29,9 @@ spec = do
   describe "initialServerTime" $ it "is valid" $ shouldBeValid initialServerTime
   describe "makeItemSyncRequest" $
     it "produces valid requests" $ producesValidsOnValids (makeItemSyncRequest @Int)
+  describe "mergeItemSyncResponseRaw" $
+    it "produces valid client stores" $
+    producesValidsOnValids2 (mergeItemSyncResponseRaw @Int)
   describe "mergeItemSyncResponseIgnoreProblems" $
     it "produces valid client stores" $
     producesValidsOnValids2 (mergeItemSyncResponseIgnoreProblems @Int)

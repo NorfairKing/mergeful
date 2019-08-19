@@ -3,8 +3,6 @@
 module Data.GenValidity.Mergeful.Item where
 
 import Data.GenValidity
-import Data.GenValidity.Containers ()
-import Data.GenValidity.Time ()
 
 import Test.QuickCheck
 

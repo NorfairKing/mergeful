@@ -1,12 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
--- | A way to synchronise a single item without merge conflicts.
+-- | A way to synchronise a single item with safe merge conflicts.
 --
 -- The setup is as follows:
 --
@@ -25,7 +20,7 @@
 --
 -- * The client produces a 'ItemSyncRequest' with 'makeItemSyncRequest'.
 -- * The client sends that request to the central server and gets a 'ItemSyncResponse'.
--- * The client then updates its local store with 'mergeItemSyncResponseRaw' or mergeItemSyncResponseIgnoreProblems.
+-- * The client then updates its local store with 'mergeItemSyncResponseRaw' or 'mergeItemSyncResponseIgnoreProblems'.
 module Data.Mergeful.Item
   ( ClientItem(..)
   , ItemSyncRequest(..)
@@ -35,7 +30,7 @@ module Data.Mergeful.Item
   , mergeItemSyncResponseRaw
   , mergeItemSyncResponseIgnoreProblems
   , ignoreMergeProblems
-  , ServerTime(..)
+  , ServerTime
   , initialServerTime
   , incrementServerTime
   , ServerItem(..)
@@ -184,6 +179,8 @@ data MergeResult a
   -- | The server responded with a response that did not make sense given the client's request.
   | MergeMismatch
   deriving (Show, Eq, Generic)
+
+instance Validity a => Validity (MergeResult a)
 
 mergeItemSyncResponseRaw :: ClientItem a -> ItemSyncResponse a -> MergeResult a
 mergeItemSyncResponseRaw cs sr =
