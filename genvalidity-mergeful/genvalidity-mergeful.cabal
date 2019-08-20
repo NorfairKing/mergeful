@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ce1ea6b5d7e0890cafd8a6fcc89e0d74a9f3fe1f2693ae528395978121b9c898
+-- hash: a5750c7205947d6021b246576f9140c03f3739bb3366a5d26c4e9ab66580d8fb
 
 name:           genvalidity-mergeful
 version:        0.0.0.0
@@ -36,6 +36,7 @@ library
   build-depends:
       QuickCheck
     , base >=4.7 && <5
+    , containers
     , genvalidity
     , genvalidity-containers
     , genvalidity-time

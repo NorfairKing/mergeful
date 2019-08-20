@@ -6,6 +6,8 @@ module Data.MergefulSpec
   ( spec
   ) where
 
+import Debug.Trace
+
 import Data.UUID.Typed as Typed
 import GHC.Generics (Generic)
 import System.Random
@@ -28,14 +30,24 @@ import Data.GenValidity.Mergeful.Item
 
 spec :: Spec
 spec = do
-  genValidSpec @(ClientStore (UUID Int) Int)
-  genValidSpec @(ServerStore (UUID Int) Int)
-  genValidSpec @(SyncRequest (UUID Int) Int)
-  genValidSpec @(SyncResponse (UUID Int) Int)
+  genValidSpec @(Timed Int)
+  genValidSpec @(ClientStore Int Int)
+  genValidSpec @(ServerStore Int Int)
+  genValidSpec @(SyncRequest Int Int)
+  genValidSpec @(SyncResponse Int Int)
+  describe "emptySyncResponse" $ it "is valid" $ shouldBeValid $ emptySyncResponse @Int @Int
   describe "makeSyncRequest" $
     it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @Int @Int)
+  describe "mergeAddedItems" $
+    it "produces valid results" $ producesValidsOnValids2 (mergeAddedItems @Int @Int)
+  describe "mergeSyncedButChangedItems" $
+    it "produces valid results" $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
+  describe "mergeDeletedItems" $
+    it "produces valid results" $ producesValidsOnValids2 (mergeDeletedItems @Int)
   describe "mergeSyncResponseIgnoreProblems" $
-    it "produces valid requests" $ producesValidsOnValids2 (mergeSyncResponseIgnoreProblems @Int @Int)
+    it "produces valid requests" $
+    producesValidsOnValids2
+         (mergeSyncResponseIgnoreProblems @Int @Int)
   describe "processServerSync" $
     it "produces valid tuples of a response and a store" $
     producesValidsOnValids2
