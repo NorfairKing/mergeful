@@ -149,6 +149,55 @@ spec = do
                   -- Client A and Client B now have the same store
                   lift $ cAstore2 `shouldBe` cBstore2
                 _ -> lift $ expectationFailure "Should have found exactly one added item."
+        it "successfully syncs a modification accross to a second client" $
+          forAllValid $ \uuid ->
+            forAllValid $ \i ->
+              forAllValid $ \j ->
+                forAllValid $ \time1 ->
+                  evalDM $ do
+                    let cAstore1 =
+                          emptyClientStore
+                            { clientStoreSyncedItems =
+                                M.singleton (uuid :: UUID Int) (Timed (i :: Int) time1)
+                            }
+                    -- Client B had synced that same item, but has since modified it
+                    let cBstore1 =
+                          emptyClientStore
+                            {clientStoreSyncedButChangedItems = M.singleton uuid (Timed j time1)}
+                    -- The server is has the item that both clients had before
+                    let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i time1)}
+                    -- Client B makes sync request 1
+                    let req1 = makeSyncRequest cBstore1
+                    -- The server processes sync request 1
+                    (resp1, sstore2) <- processServerSync genD sstore1 req1
+                    let time2 = incrementServerTime time1
+                    lift $ do
+                      resp1 `shouldBe`
+                        emptySyncResponse
+                          {syncResponseModifiedByClientItems = M.singleton uuid time2}
+                      sstore2 `shouldBe`
+                        ServerStore {serverStoreItems = M.singleton uuid (Timed j time2)}
+                    -- Client B merges the response
+                    let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
+                    lift $
+                      cBstore2 `shouldBe`
+                      emptyClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
+                    -- Client A makes sync request 2
+                    let req2 = makeSyncRequest cAstore1
+                    -- The server processes sync request 2
+                    (resp2, sstore3) <- processServerSync genD sstore2 req2
+                    lift $ do
+                      resp2 `shouldBe`
+                        emptySyncResponse
+                          {syncResponseModifiedByServerItems = M.singleton uuid (Timed j time2)}
+                      sstore3 `shouldBe` sstore2
+                    -- Client A merges the response
+                    let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
+                    lift $
+                      cAstore2 `shouldBe`
+                      emptyClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
+                    -- Client A and Client B now have the same store
+                    lift $ cAstore2 `shouldBe` cBstore2
         it "does not run into a conflict if two clients both try to sync a deletion" $
           forAllValid $ \uuid ->
             forAllValid $ \time1 ->
@@ -202,7 +251,8 @@ spec = do
               -- The server processes sync request 1
               (resp1, sstore2) <- processServerSync genD sstore1 req1
               let time = initialServerTime
-              let (rest, items) = mergeAddedItems (addedItemsIntmap is) (syncResponseAddedItems resp1)
+              let (rest, items) =
+                    mergeAddedItems (addedItemsIntmap is) (syncResponseAddedItems resp1)
               lift $ do
                 rest `shouldBe` []
                 sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
