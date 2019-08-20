@@ -50,15 +50,13 @@ module Data.Mergeful
 
 import GHC.Generics (Generic)
 
-import Control.Applicative
 import Control.Monad
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Traversable
+import Data.These
 import Data.Validity
 import Data.Validity.Containers ()
 
@@ -197,6 +195,7 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
           , syncResponseNewRemoteItems
           , syncResponseModifiedByServerItems
           , newModifiedItems
+          , clientStoreSyncedItems cs
           ]
       -- The M.difference calls only make sure that this function always produces valid values.
       -- They are not necessary for the correct working.
@@ -218,8 +217,8 @@ mergeAddedItems ::
 mergeAddedItems local added = M.foldlWithKey go ([], M.empty) local
   where
     go :: ([a], Map i (Timed a)) -> Int -> a -> ([a], Map i (Timed a))
-    go (as, m) k a =
-      case M.lookup k added of
+    go (as, m) i a =
+      case M.lookup i added of
         Nothing -> (a : as, m)
         Just (k, st) -> (as, M.insert k (Timed {timedValue = a, timedTime = st}) m)
 
@@ -240,32 +239,53 @@ mergeDeletedItems :: Ord i => Map i b -> Set i -> (Map i b)
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 
 addToSyncResponse ::
-     Ord i => SyncResponse i a -> ClientId i -> i -> ItemSyncResponse a -> SyncResponse i a
-addToSyncResponse sr cid i isr =
-  case isr of
-    ItemSyncResponseInSyncEmpty -> sr
-    ItemSyncResponseInSyncFull -> sr
-    ItemSyncResponseSuccesfullyAdded st ->
-      case cid of
-        OnlyClientId int ->
+     Ord i => SyncResponse i a -> ClientId i -> ItemSyncResponse a -> SyncResponse i a
+addToSyncResponse sr cid isr =
+  case cid of
+    BothServerAndClient i int ->
+      case isr of
+        ItemSyncResponseSuccesfullyAdded st ->
           sr {syncResponseAddedItems = M.insert int (i, st) $ syncResponseAddedItems sr}
         _ -> error "should not happen"
-    ItemSyncResponseSuccesfullyChanged st ->
-      sr {syncResponseModifiedByClientItems = M.insert i st $ syncResponseModifiedByClientItems sr}
-    ItemSyncResponseSuccesfullyDeleted ->
-      sr {syncResponseItemsToBeDeletedLocally = S.insert i $ syncResponseItemsToBeDeletedLocally sr}
-    ItemSyncResponseNewAtServer t ->
-      sr {syncResponseNewRemoteItems = M.insert i t $ syncResponseNewRemoteItems sr}
-    ItemSyncResponseModifiedAtServer t ->
-      sr {syncResponseModifiedByServerItems = M.insert i t $ syncResponseModifiedByServerItems sr}
-    ItemSyncResponseDeletedAtServer ->
-      sr {syncResponseItemsToBeDeletedLocally = S.insert i $ syncResponseItemsToBeDeletedLocally sr}
-    ItemSyncResponseConflict a ->
-      sr {syncResponseConflicts = M.insert i a $ syncResponseConflicts sr}
-    ItemSyncResponseConflictClientDeleted a ->
-      sr {syncResponseConflictsClientDeleted = M.insert i a $ syncResponseConflictsClientDeleted sr}
-    ItemSyncResponseConflictServerDeleted ->
-      sr {syncResponseConflictsServerDeleted = S.insert i $syncResponseConflictsServerDeleted sr}
+    OnlyServer i ->
+      case isr of
+        ItemSyncResponseInSyncEmpty -> sr
+        ItemSyncResponseInSyncFull -> sr
+        ItemSyncResponseSuccesfullyAdded _ -> error "should not happen."
+        ItemSyncResponseSuccesfullyChanged st ->
+          sr
+            { syncResponseModifiedByClientItems =
+                M.insert i st $ syncResponseModifiedByClientItems sr
+            }
+        ItemSyncResponseSuccesfullyDeleted ->
+          sr
+            { syncResponseItemsToBeDeletedLocally =
+                S.insert i $ syncResponseItemsToBeDeletedLocally sr
+            }
+        ItemSyncResponseNewAtServer t ->
+          sr {syncResponseNewRemoteItems = M.insert i t $ syncResponseNewRemoteItems sr}
+        ItemSyncResponseModifiedAtServer t ->
+          sr
+            { syncResponseModifiedByServerItems =
+                M.insert i t $ syncResponseModifiedByServerItems sr
+            }
+        ItemSyncResponseDeletedAtServer ->
+          sr
+            { syncResponseItemsToBeDeletedLocally =
+                S.insert i $ syncResponseItemsToBeDeletedLocally sr
+            }
+        ItemSyncResponseConflict a ->
+          sr {syncResponseConflicts = M.insert i a $ syncResponseConflicts sr}
+        ItemSyncResponseConflictClientDeleted a ->
+          sr
+            { syncResponseConflictsClientDeleted =
+                M.insert i a $ syncResponseConflictsClientDeleted sr
+            }
+        ItemSyncResponseConflictServerDeleted ->
+          sr
+            { syncResponseConflictsServerDeleted =
+                S.insert i $ syncResponseConflictsServerDeleted sr
+            }
 
 -- | Process a sync request from the server
 processServerSync ::
@@ -275,67 +295,73 @@ processServerSync ::
   -> SyncRequest i a
   -> m (SyncResponse i a, ServerStore i a)
 processServerSync genId ServerStore {..} SyncRequest {..} = do
-  let itemSyncRequests :: [(ClientId i, ItemSyncRequest a)]
-      itemSyncRequests =
-        concat
-          [ map (\(i, a) -> (OnlyClientId i, ItemSyncRequestNew a)) $ M.toList syncRequestNewItems
-          , map (\(i, st) -> (AlreadyServerId i, ItemSyncRequestKnown st)) $
-            M.toList syncRequestKnownItems
-          , map (\(i, t) -> (AlreadyServerId i, ItemSyncRequestKnownButChanged t)) $
-            M.toList syncRequestKnownButChangedItems
-          , map (\(i, st) -> (AlreadyServerId i, ItemSyncRequestDeletedLocally st)) $
-            M.toList syncRequestDeletedItems
+  let clientIdentifiedSyncRequests :: Map i (ItemSyncRequest a)
+      clientIdentifiedSyncRequests =
+        M.unions
+          [ M.map ItemSyncRequestKnown syncRequestKnownItems
+          , M.map ItemSyncRequestKnownButChanged syncRequestKnownButChangedItems
+          , M.map ItemSyncRequestDeletedLocally syncRequestDeletedItems
           ]
-      itemSyncPairs :: [SyncPair (ClientId i, ItemSyncRequest a) (i, Timed a)]
-      itemSyncPairs =
-        map
-          (\t@(mIdentifier, isr) ->
-             case mIdentifier of
-               OnlyClientId _ -> OnlyClient t
-               AlreadyServerId i ->
-                 case M.lookup i serverStoreItems of
-                   Nothing -> OnlyClient t
-                   Just timed -> BothClientAndServer t (i, timed))
-          itemSyncRequests
-        -- TODO also add syncs for items only on the server side
-      itemSyncResponses :: m (Map (ClientId i) (i, (ItemSyncResponse a, ServerItem a)))
-      itemSyncResponses =
-        fmap M.fromList $
-        for itemSyncPairs $ \sp ->
-          case sp of
-            OnlyClient (ci@(OnlyClientId _), isr) ->
-              (,) ci <$> ((,) <$> genId <*> pure (processServerItemSync initialServerItem isr))
-            OnlyClient (ci@(AlreadyServerId i), isr) ->
-              pure $ (ci, (i, processServerItemSync initialServerItem isr))
-            OnlyServer (i, t) ->
-              pure $
-              (AlreadyServerId i, (i, processServerItemSync (ServerFull t) ItemSyncRequestPoll))
-            BothClientAndServer (ci, isr) (i, t) ->
-              pure $ (ci, (i, processServerItemSync (ServerFull t) isr))
-  resps <- itemSyncResponses
-  let resp =
-        foldl (\sr (cid, (i, (resp, _))) -> addToSyncResponse sr cid i resp) emptySyncResponse $
-        M.toList resps
-  let newStore =
-        M.fromList $
-        mapMaybe
-          (\(cid, (i, (_, si))) ->
+      serverIdentifiedItems :: Map i (ServerItem a)
+      serverIdentifiedItems = M.map ServerFull serverStoreItems
+      thesePairs :: Map i (These (ServerItem a) (ItemSyncRequest a))
+      thesePairs = unionThese serverIdentifiedItems clientIdentifiedSyncRequests
+      pairs :: Map i (ServerItem a, ItemSyncRequest a)
+      pairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
+      unidentifedPairs :: Map Int (ServerItem a, ItemSyncRequest a)
+      unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
+      unidentifedResults :: Map Int (ItemSyncResponse a, ServerItem a)
+      unidentifedResults = M.map (uncurry processServerItemSync) unidentifedPairs
+  generatedResults <-
+    fmap M.fromList $
+    forM (M.toList unidentifedResults) $ \(int, r) -> do
+      uuid <- genId
+      pure ((uuid, int), r)
+  let identifiedResults :: Map i (ItemSyncResponse a, ServerItem a)
+      identifiedResults = M.map (uncurry processServerItemSync) pairs
+      allResults :: Map (ClientId i) (ItemSyncResponse a, ServerItem a)
+      allResults =
+        M.union
+          (M.mapKeys OnlyServer identifiedResults)
+          (M.mapKeys (uncurry BothServerAndClient) generatedResults)
+      resp :: SyncResponse i a
+      resp =
+        M.foldlWithKey
+          (\sr cid (isr, _) -> addToSyncResponse sr cid isr)
+          emptySyncResponse
+          allResults
+      newStore :: Map i (Timed a)
+      newStore =
+        M.mapMaybe
+          (\si ->
              case si of
                ServerEmpty -> Nothing
-               ServerFull t -> Just $ (i, t)) $
-        M.toList resps
+               ServerFull t -> Just t) $
+        M.map snd $
+        M.mapKeys
+          (\cid ->
+             case cid of
+               OnlyServer i -> i
+               BothServerAndClient i _ -> i)
+          allResults
   pure (resp, ServerStore newStore)
 
 data ClientId i
-  = OnlyClientId Int
-  | AlreadyServerId i
+  = OnlyServer i
+  | BothServerAndClient i Int
   deriving (Show, Eq, Ord, Generic)
-
-data SyncPair a b
-  = OnlyClient a
-  | OnlyServer b
-  | BothClientAndServer a b
-  deriving (Show, Eq, Generic)
 
 distinct :: Eq a => [a] -> Bool
 distinct ls = nub ls == ls
+
+data Some a b
+  = One a
+  | Other b
+  | Both a b
+  deriving (Show, Eq, Generic)
+
+unionThese :: Ord k => Map k a -> Map k b -> Map k (These a b)
+unionThese m1 m2 = M.unionWith go (M.map This m1) (M.map That m2)
+  where
+    go (This a) (That b) = These a b
+    go _ _ = error "should not happen."

@@ -6,9 +6,6 @@ module Data.MergefulSpec
   ( spec
   ) where
 
-import Debug.Trace
-
-import Data.Functor
 import Data.Functor.Identity
 import Data.List
 import Data.Map (Map)
@@ -22,16 +19,14 @@ import Text.Show.Pretty
 import Control.Monad.State
 
 import Test.Hspec
-import Test.QuickCheck
 import Test.Validity
 
 import Data.GenValidity.UUID.Typed ()
 
 import Data.Mergeful
-import Data.Mergeful.Item
 
 import Data.GenValidity.Mergeful ()
-import Data.GenValidity.Mergeful.Item
+import Data.GenValidity.Mergeful.Item ()
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
@@ -215,7 +210,6 @@ spec = do
                   let req1 = makeSyncRequest cAstore1
                   -- The server processes sync request 1
                   (resp1, sstore2) <- processServerSync genD sstore1 req1
-                  let time2 = incrementServerTime time1
                   lift $ do
                     resp1 `shouldBe`
                       (emptySyncResponse {syncResponseItemsToBeDeletedLocally = S.singleton uuid})
@@ -250,7 +244,6 @@ spec = do
               let req1 = makeSyncRequest cAstore1
               -- The server processes sync request 1
               (resp1, sstore2) <- processServerSync genD sstore1 req1
-              let time = initialServerTime
               let (rest, items) =
                     mergeAddedItems (addedItemsIntmap is) (syncResponseAddedItems resp1)
               lift $ do
@@ -289,7 +282,6 @@ spec = do
                 let req1 = makeSyncRequest cAstore1
                 -- The server processes sync request 1
                 (resp1, sstore2) <- processServerSync genD sstore1 req1
-                let time2 = incrementServerTime time1
                 lift $ do
                   resp1 `shouldBe`
                     (emptySyncResponse {syncResponseItemsToBeDeletedLocally = M.keysSet items})
@@ -316,14 +308,13 @@ newtype D m a =
   D
     { unD :: StateT StdGen m a
     }
-  deriving (Generic, Functor, Applicative, Monad, MonadState StdGen, MonadTrans)
+  deriving (Generic, Functor, Applicative, Monad, MonadState StdGen, MonadTrans, MonadIO)
 
 evalD :: D Identity a -> a
 evalD = runIdentity . evalDM
 
-runD :: D Identity a -> StdGen -> (a, StdGen)
-runD = runState . unD
-
+-- runD :: D Identity a -> StdGen -> (a, StdGen)
+-- runD = runState . unD
 evalDM :: Functor m => D m a -> m a
 evalDM d = fst <$> runDM d (mkStdGen 42)
 
