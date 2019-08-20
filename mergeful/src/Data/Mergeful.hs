@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -51,6 +53,7 @@ module Data.Mergeful
 import GHC.Generics (Generic)
 
 import Control.Monad
+import Data.Aeson
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -84,6 +87,20 @@ instance (Validity i, Ord i, Validity a) => Validity (ClientStore i a) where
         ]
       ]
 
+instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (ClientStore i a) where
+  parseJSON =
+    withObject "ClientStore" $ \o ->
+      ClientStore <$> o .: "added" <*> o .: "synced" <*> o .: "changed" <*> o .: "deleted"
+
+instance (ToJSONKey i, ToJSON a) => ToJSON (ClientStore i a) where
+  toJSON ClientStore {..} =
+    object
+      [ "added" .= clientStoreAddedItems
+      , "synced" .= clientStoreSyncedItems
+      , "changed" .= clientStoreSyncedButChangedItems
+      , "deleted" .= clientStoreDeletedItems
+      ]
+
 emptyClientStore :: ClientStore i a
 emptyClientStore =
   ClientStore
@@ -93,11 +110,11 @@ emptyClientStore =
     , clientStoreDeletedItems = M.empty
     }
 
-data ServerStore i a =
+newtype ServerStore i a =
   ServerStore
     { serverStoreItems :: Map i (Timed a)
     }
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 instance (Validity i, Ord i, Validity a) => Validity (ServerStore i a)
 
@@ -124,6 +141,20 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncRequest i a) where
         , M.keys syncRequestKnownButChangedItems
         , M.keys syncRequestDeletedItems
         ]
+      ]
+
+instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (SyncRequest i a) where
+  parseJSON =
+    withObject "SyncRequest" $ \o ->
+      SyncRequest <$> o .: "new" <*> o .: "synced" <*> o .: "changed" <*> o .: "deleted"
+
+instance (ToJSONKey i, ToJSON a) => ToJSON (SyncRequest i a) where
+  toJSON SyncRequest {..} =
+    object
+      [ "new" .= syncRequestNewItems
+      , "synced" .= syncRequestKnownItems
+      , "changed" .= syncRequestKnownButChangedItems
+      , "deleted" .= syncRequestDeletedItems
       ]
 
 data SyncResponse i a =
@@ -155,6 +186,29 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncResponse i a) where
         , M.keys syncResponseConflictsClientDeleted
         , S.toList syncResponseConflictsServerDeleted
         ]
+      ]
+
+instance (Ord i, FromJSON i, FromJSONKey i, FromJSON a) => FromJSON (SyncResponse i a) where
+  parseJSON =
+    withObject "SyncResponse" $ \o ->
+      SyncResponse <$> o .: "client-added" <*> o .: "server-added" <*> o .: "server-changed" <*>
+      o .: "client-changed" <*>
+      o .: "client-deleted" <*>
+      o .: "conflict" <*>
+      o .: "conflict-client-deleted" <*>
+      o .: "conflict-server-deleted"
+
+instance (ToJSON i, ToJSONKey i, ToJSON a) => ToJSON (SyncResponse i a) where
+  toJSON SyncResponse {..} =
+    object
+      [ "client-added" .= syncResponseAddedItems
+      , "server-added" .= syncResponseNewRemoteItems
+      , "server-changed" .= syncResponseModifiedByServerItems
+      , "client-changed" .= syncResponseModifiedByClientItems
+      , "client-deleted" .= syncResponseItemsToBeDeletedLocally
+      , "conflict" .= syncResponseConflicts
+      , "conflict-client-deleted" .= syncResponseConflictsClientDeleted
+      , "conflict-server-deleted" .= syncResponseConflictsServerDeleted
       ]
 
 emptySyncResponse :: SyncResponse i a
@@ -306,8 +360,8 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
       serverIdentifiedItems = M.map ServerFull serverStoreItems
       thesePairs :: Map i (These (ServerItem a) (ItemSyncRequest a))
       thesePairs = unionThese serverIdentifiedItems clientIdentifiedSyncRequests
-      pairs :: Map i (ServerItem a, ItemSyncRequest a)
-      pairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
+      requestPairs :: Map i (ServerItem a, ItemSyncRequest a)
+      requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
       unidentifedPairs :: Map Int (ServerItem a, ItemSyncRequest a)
       unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
       unidentifedResults :: Map Int (ItemSyncResponse a, ServerItem a)
@@ -318,7 +372,7 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
       uuid <- genId
       pure ((uuid, int), r)
   let identifiedResults :: Map i (ItemSyncResponse a, ServerItem a)
-      identifiedResults = M.map (uncurry processServerItemSync) pairs
+      identifiedResults = M.map (uncurry processServerItemSync) requestPairs
       allResults :: Map (ClientId i) (ItemSyncResponse a, ServerItem a)
       allResults =
         M.union

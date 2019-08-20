@@ -1,5 +1,8 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 -- | A way to synchronise a single item with safe merge conflicts.
 --
@@ -46,6 +49,7 @@ module Data.Mergeful.Item
 
 import GHC.Generics (Generic)
 
+import Data.Aeson as JSON
 import Data.Validity
 import Data.Word
 
@@ -53,7 +57,7 @@ newtype ServerTime =
   ServerTime
     { unServerTime :: Word64
     }
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 instance Validity ServerTime
 
@@ -72,6 +76,12 @@ data Timed a =
 
 instance Validity a => Validity (Timed a)
 
+instance FromJSON a => FromJSON (Timed a) where
+  parseJSON = withObject "Timed" $ \o -> Timed <$> o .: "value" <*> o .: "time"
+
+instance ToJSON a => ToJSON (Timed a) where
+  toJSON Timed {..} = object ["value" .= timedValue, "time" .= timedTime]
+
 data ClientItem a
   -- | There is no item on the client side
   = ClientEmpty
@@ -87,12 +97,40 @@ data ClientItem a
 
 instance Validity a => Validity (ClientItem a)
 
+instance FromJSON a => FromJSON (ClientItem a) where
+  parseJSON =
+    withObject "ClientItem" $ \o -> do
+      typ <- o .: "type"
+      case typ :: String of
+        "empty" -> pure ClientEmpty
+        "added" -> ClientAdded <$> o .: "value"
+        "synced" -> ClientItemSynced <$> (Timed <$> o .: "value" <*> o .: "time")
+        "changed" -> ClientItemSyncedButChanged <$> (Timed <$> o .: "value" <*> o .: "time")
+        "deleted" -> ClientDeleted <$> o .: "time"
+        _ -> fail "unknown item type"
+
+instance ToJSON a => ToJSON (ClientItem a) where
+  toJSON ci =
+    object $
+    case ci of
+      ClientEmpty -> ["type" .= ("empty" :: String)]
+      ClientAdded a -> ["type" .= ("added" :: String), "value" .= a]
+      ClientItemSynced Timed {..} ->
+        ["type" .= ("synced" :: String), "value" .= timedValue, "time" .= timedTime]
+      ClientItemSyncedButChanged Timed {..} ->
+        ["type" .= ("changed" :: String), "value" .= timedValue, "time" .= timedTime]
+      ClientDeleted t -> ["type" .= ("deleted" :: String), "time" .= t]
+
 data ServerItem a
   = ServerEmpty
   | ServerFull !(Timed a)
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ServerItem a)
+
+instance FromJSON a => FromJSON (ServerItem a)
+
+instance ToJSON a => ToJSON (ServerItem a)
 
 initialServerItem :: ServerItem a
 initialServerItem = ServerEmpty
@@ -113,6 +151,29 @@ data ItemSyncRequest a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ItemSyncRequest a)
+
+instance FromJSON a => FromJSON (ItemSyncRequest a) where
+  parseJSON =
+    withObject "ItemSyncRequest" $ \o -> do
+      typ <- o .: "type"
+      case typ :: String of
+        "empty" -> pure ItemSyncRequestPoll
+        "added" -> ItemSyncRequestNew <$> o .: "value"
+        "synced" -> ItemSyncRequestKnown <$> o .: "time"
+        "changed" -> ItemSyncRequestKnownButChanged <$> (Timed <$> o .: "value" <*> o .: "time")
+        "deleted" -> ItemSyncRequestDeletedLocally <$> o .: "time"
+        _ -> fail "unknown item type"
+
+instance ToJSON a => ToJSON (ItemSyncRequest a) where
+  toJSON ci =
+    object $
+    case ci of
+      ItemSyncRequestPoll -> ["type" .= ("empty" :: String)]
+      ItemSyncRequestNew a -> ["type" .= ("added" :: String), "value" .= a]
+      ItemSyncRequestKnown t -> ["type" .= ("synced" :: String), "time" .= t]
+      ItemSyncRequestKnownButChanged Timed {..} ->
+        ["type" .= ("changed" :: String), "value" .= timedValue, "time" .= timedTime]
+      ItemSyncRequestDeletedLocally t -> ["type" .= ("deleted" :: String), "time" .= t]
 
 data ItemSyncResponse a
   -- | The client and server are fully in sync, and both empty
@@ -168,6 +229,45 @@ data ItemSyncResponse a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ItemSyncResponse a)
+
+instance FromJSON a => FromJSON (ItemSyncResponse a) where
+  parseJSON =
+    withObject "ItemSyncResponse" $ \o -> do
+      typ <- o .: "type"
+      case typ :: String of
+        "in-sync-empty" -> pure ItemSyncResponseInSyncEmpty
+        "in-sync-full" -> pure ItemSyncResponseInSyncFull
+        "client-added" -> ItemSyncResponseSuccesfullyAdded <$> o .: "time"
+        "client-changed" -> ItemSyncResponseSuccesfullyChanged <$> o .: "time"
+        "client-deleted" -> pure ItemSyncResponseSuccesfullyDeleted
+        "server-added" -> ItemSyncResponseNewAtServer <$> (Timed <$> o .: "value" <*> o .: "time")
+        "server-changed" ->
+          ItemSyncResponseModifiedAtServer <$> (Timed <$> o .: "value" <*> o .: "time")
+        "server-deleted" -> pure ItemSyncResponseDeletedAtServer
+        "conflict" -> ItemSyncResponseConflict <$> o .: "value"
+        "conflict-client-deleted" -> ItemSyncResponseConflictClientDeleted <$> o .: "value"
+        "conflict-server-deleted" -> pure ItemSyncResponseConflictServerDeleted
+        _ -> fail "unknown type"
+
+instance ToJSON a => ToJSON (ItemSyncResponse a) where
+  toJSON isr =
+    object $
+    let o s rest = ("type" .= (s :: String)) : rest
+        oe s = o s []
+     in case isr of
+          ItemSyncResponseInSyncEmpty -> oe "in-sync-empty"
+          ItemSyncResponseInSyncFull -> oe "in-sync-full"
+          ItemSyncResponseSuccesfullyAdded t -> o "client-added" ["time" .= t]
+          ItemSyncResponseSuccesfullyChanged t -> o "client-changed" ["time" .= t]
+          ItemSyncResponseSuccesfullyDeleted -> oe "client-deleted"
+          ItemSyncResponseNewAtServer Timed {..} ->
+            o "server-added" ["value" .= timedValue, "time" .= timedTime]
+          ItemSyncResponseModifiedAtServer Timed {..} ->
+            o "server-changed" ["value" .= timedValue, "time" .= timedTime]
+          ItemSyncResponseDeletedAtServer -> oe "server-deleted"
+          ItemSyncResponseConflict a -> o "conflict" ["value" .= a]
+          ItemSyncResponseConflictClientDeleted a -> o "conflict-client-deleted" ["value" .= a]
+          ItemSyncResponseConflictServerDeleted -> oe "conflict-server-deleted"
 
 makeItemSyncRequest :: ClientItem a -> ItemSyncRequest a
 makeItemSyncRequest cs =
@@ -258,7 +358,7 @@ processServerItemSync store sr =
             ItemSyncRequestNew ci ->
               ( ItemSyncResponseSuccesfullyAdded t
               , ServerFull $ Timed {timedValue = ci, timedTime = t})
-            ItemSyncRequestKnown ct
+            ItemSyncRequestKnown _
              -- This indicates that the server synced with another client and was told to
              -- delete its item.
              --
@@ -266,14 +366,14 @@ processServerItemSync store sr =
              -- the server will just instruct the client to delete its item too.
              -- No conflict here.
              -> (ItemSyncResponseDeletedAtServer, store)
-            ItemSyncRequestKnownButChanged ct
+            ItemSyncRequestKnownButChanged _
              -- This indicates that the server synced with another client and was told to
              -- delete its item.
              --
              -- Given that the client indicates that it *did* change its item locally,
              -- there is a conflict.
              -> (ItemSyncResponseConflictServerDeleted, store)
-            ItemSyncRequestDeletedLocally ct
+            ItemSyncRequestDeletedLocally _
              -- This means that the server synced with another client,
              -- was instructed to delete its item by that client,
              -- and is now being told to delete its item again.

@@ -4,8 +4,6 @@ module Data.GenValidity.Mergeful.Item where
 
 import Data.GenValidity
 
-import Test.QuickCheck
-
 import Data.Mergeful.Item
 
 instance GenUnchecked a => GenUnchecked (ClientItem a)
@@ -43,4 +41,3 @@ instance GenUnchecked ServerTime
 instance GenValid ServerTime where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
-

@@ -7,10 +7,11 @@ module Data.Mergeful.ItemSpec
 import Test.Hspec
 import Test.QuickCheck
 import Test.Validity
+import Test.Validity.Aeson
 
 import Data.Mergeful.Item
 
-import Data.GenValidity.Mergeful.Item
+import Data.GenValidity.Mergeful.Item ()
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
@@ -22,10 +23,17 @@ forAllSubsequent func =
 spec :: Spec
 spec = do
   genValidSpec @ServerTime
+  jsonSpecOnValid @ServerTime
+  genValidSpec @(Timed Int)
+  jsonSpecOnValid @(Timed Int)
   genValidSpec @(ClientItem Int)
+  jsonSpecOnValid @(ClientItem Int)
   genValidSpec @(ServerItem Int)
+  jsonSpecOnValid @(ServerItem Int)
   genValidSpec @(ItemSyncRequest Int)
+  jsonSpecOnValid @(ItemSyncRequest Int)
   genValidSpec @(ItemSyncResponse Int)
+  jsonSpecOnValid @(ItemSyncResponse Int)
   describe "initialServerTime" $ it "is valid" $ shouldBeValid initialServerTime
   describe "makeItemSyncRequest" $
     it "produces valid requests" $ producesValidsOnValids (makeItemSyncRequest @Int)
@@ -211,7 +219,6 @@ spec = do
           let req1 = makeItemSyncRequest cBstore1
           -- The server processes sync request 1
           let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
-          let time2 = incrementServerTime time1
           resp1 `shouldBe` ItemSyncResponseSuccesfullyDeleted
           sstore2 `shouldBe` ServerEmpty
           -- Client B merges the response
@@ -240,7 +247,6 @@ spec = do
           let req1 = makeItemSyncRequest cAstore1
           -- The server processes sync request 1
           let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
-          let time2 = incrementServerTime time1
           resp1 `shouldBe` ItemSyncResponseSuccesfullyDeleted
           sstore2 `shouldBe` ServerEmpty
           -- Client A merges the response

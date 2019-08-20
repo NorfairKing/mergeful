@@ -20,6 +20,7 @@ import Control.Monad.State
 
 import Test.Hspec
 import Test.Validity
+import Test.Validity.Aeson
 
 import Data.GenValidity.UUID.Typed ()
 
@@ -32,11 +33,14 @@ import Data.GenValidity.Mergeful.Item ()
 
 spec :: Spec
 spec = do
-  genValidSpec @(Timed Int)
   genValidSpec @(ClientStore Int Int)
+  jsonSpecOnValid @(ClientStore Int Int)
   genValidSpec @(ServerStore Int Int)
+  jsonSpecOnValid @(ServerStore Int Int)
   genValidSpec @(SyncRequest Int Int)
+  jsonSpecOnValid @(SyncRequest Int Int)
   genValidSpec @(SyncResponse Int Int)
+  jsonSpecOnValid @(SyncResponse Int Int)
   describe "emptySyncResponse" $ it "is valid" $ shouldBeValid $ emptySyncResponse @Int @Int
   describe "makeSyncRequest" $
     it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @Int @Int)
