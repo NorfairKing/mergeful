@@ -32,19 +32,28 @@ instance GenValid a => GenValid (ItemSyncResponse a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
+instance (GenUnchecked a) => GenUnchecked (Timed a)
+
+instance (GenValid a) => GenValid (Timed a) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
+
 instance GenUnchecked ServerTime
 
 instance GenValid ServerTime where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
+timedAt :: GenValid a => ServerTime -> Gen (Timed a)
+timedAt st = Timed <$> genValid <*> pure st
+
 serverItemAt :: GenValid a => ServerTime -> Gen (ServerItem a)
-serverItemAt st = oneof [pure $ ServerEmpty st, ServerFull <$> genValid <*> pure st]
+serverItemAt st = oneof [pure $ ServerEmpty st, ServerFull <$> timedAt st]
 
 reqAt :: GenValid a => ServerTime -> Gen (ItemSyncRequest a)
 reqAt st =
   oneof
     [ pure $ ItemSyncRequestKnown st
-    , ItemSyncRequestKnownButChanged <$> genValid <*> pure st
+    , ItemSyncRequestKnownButChanged <$> timedAt st
     , pure $ ItemSyncRequestDeletedLocally st
     ]

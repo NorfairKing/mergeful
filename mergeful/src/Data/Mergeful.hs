@@ -24,8 +24,7 @@
 -- * The client sends that request to the central server and gets a 'SyncResponse'.
 -- * The client then updates its local store with 'mergeSyncResponseIgnoreProblems'.
 module Data.Mergeful
-  ( Timed(..)
-  , ClientStore(..)
+  ( ClientStore(..)
   , emptyClientStore
   , SyncRequest(..)
   , makeSyncRequest
@@ -38,6 +37,10 @@ module Data.Mergeful
   , ServerStore(..)
   , emptyServerStore
   , processServerSync
+  , Timed(..)
+  , ServerTime
+  , initialServerTime
+  , incrementServerTime
   ) where
 
 import GHC.Generics (Generic)
@@ -55,15 +58,6 @@ import Data.Validity
 import Data.Validity.Containers ()
 
 import Data.Mergeful.Item
-
-data Timed a =
-  Timed
-    { timedValue :: !a
-    , timedTime :: !ServerTime
-    }
-  deriving (Show, Eq, Generic)
-
-instance Validity a => Validity (Timed a)
 
 data ClientStore i a =
   ClientStore
@@ -247,17 +241,10 @@ addToSyncResponse sr cid i isr =
       sr {syncResponseModifiedByClientItems = M.insert i st $ syncResponseModifiedByClientItems sr}
     ItemSyncResponseSuccesfullyDeleted ->
       sr {syncResponseItemsToBeDeletedLocally = S.insert i $ syncResponseItemsToBeDeletedLocally sr}
-    ItemSyncResponseNewAtServer a st ->
-      sr
-        { syncResponseNewRemoteItems =
-            M.insert i (Timed {timedValue = a, timedTime = st}) $ syncResponseNewRemoteItems sr
-        }
-    ItemSyncResponseModifiedAtServer a st ->
-      sr
-        { syncResponseModifiedByServerItems =
-            M.insert i (Timed {timedValue = a, timedTime = st}) $
-            syncResponseModifiedByServerItems sr
-        }
+    ItemSyncResponseNewAtServer t ->
+      sr {syncResponseNewRemoteItems = M.insert i t $ syncResponseNewRemoteItems sr}
+    ItemSyncResponseModifiedAtServer t ->
+      sr {syncResponseModifiedByServerItems = M.insert i t $ syncResponseModifiedByServerItems sr}
     ItemSyncResponseDeletedAtServer ->
       sr {syncResponseItemsToBeDeletedLocally = S.insert i $ syncResponseItemsToBeDeletedLocally sr}
     ItemSyncResponseConflict a ->
@@ -283,9 +270,7 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
           [ map (\(i, a) -> (OnlyClientId i, ItemSyncRequestNew a)) $ M.toList syncRequestNewItems
           , map (\(i, st) -> (AlreadyServerId i, ItemSyncRequestKnown st)) $
             M.toList syncRequestKnownItems
-          , map
-              (\(i, Timed {..}) ->
-                 (AlreadyServerId i, ItemSyncRequestKnownButChanged timedValue timedTime)) $
+          , map (\(i, t) -> (AlreadyServerId i, ItemSyncRequestKnownButChanged t)) $
             M.toList syncRequestKnownButChangedItems
           , map (\(i, st) -> (AlreadyServerId i, ItemSyncRequestDeletedLocally st)) $
             M.toList syncRequestDeletedItems
@@ -311,12 +296,11 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
               (,) ci <$> ((,) <$> genId <*> pure (processServerItemSync initialServerItem isr))
             OnlyClient (ci@(AlreadyServerId i), isr) ->
               pure $ (ci, (i, processServerItemSync initialServerItem isr))
-            OnlyServer (i, Timed {..}) ->
+            OnlyServer (i, t) ->
               pure $
-              ( AlreadyServerId i
-              , (i, processServerItemSync (ServerFull timedValue timedTime) ItemSyncRequestPoll))
-            BothClientAndServer (ci, isr) (i, Timed {..}) ->
-              pure $ (ci, (i, processServerItemSync (ServerFull timedValue timedTime) isr))
+              (AlreadyServerId i, (i, processServerItemSync (ServerFull t) ItemSyncRequestPoll))
+            BothClientAndServer (ci, isr) (i, t) ->
+              pure $ (ci, (i, processServerItemSync (ServerFull t) isr))
   resps <- itemSyncResponses
   let resp =
         foldl (\sr (cid, (i, (resp, _))) -> addToSyncResponse sr cid i resp) emptySyncResponse $
@@ -327,7 +311,7 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
           (\(cid, (i, (_, si))) ->
              case si of
                ServerEmpty _ -> Nothing
-               ServerFull a st -> Just $ (i, Timed {timedValue = a, timedTime = st})) $
+               ServerFull t -> Just $ (i, t)) $
         M.toList resps
   pure (resp, ServerStore newStore)
 
