@@ -26,6 +26,7 @@
 module Data.Mergeful
   ( Timed(..)
   , ClientStore(..)
+  , emptyClientStore
   , SyncRequest(..)
   , makeSyncRequest
   , SyncResponse(..)
@@ -35,6 +36,7 @@ module Data.Mergeful
   , mergeSyncedButChangedItems
   , mergeDeletedItems
   , ServerStore(..)
+  , emptyServerStore
   , processServerSync
   ) where
 
@@ -85,6 +87,15 @@ instance (Validity i, Ord i, Validity a) => Validity (ClientStore i a) where
         ]
       ]
 
+emptyClientStore :: ClientStore i a
+emptyClientStore =
+  ClientStore
+    { clientStoreAddedItems = []
+    , clientStoreSyncedItems = M.empty
+    , clientStoreSyncedButChangedItems = M.empty
+    , clientStoreDeletedItems = M.empty
+    }
+
 data ServerStore i a =
   ServerStore
     { serverStoreItems :: Map i (Timed a)
@@ -92,6 +103,9 @@ data ServerStore i a =
   deriving (Show, Eq, Generic)
 
 instance (Validity i, Ord i, Validity a) => Validity (ServerStore i a)
+
+emptyServerStore :: ServerStore i a
+emptyServerStore = ServerStore {serverStoreItems = M.empty}
 
 data SyncRequest i a =
   SyncRequest

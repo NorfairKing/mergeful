@@ -156,17 +156,6 @@ spec = do
           resp1 `shouldBe` ItemSyncResponseSuccesfullyAdded time2
           sstore2 `shouldBe` ServerFull i time2
           cstore2 `shouldBe` ClientItemSynced i time2
-    it "is idempotent with one client" $
-      forAllValid $ \cstore1 ->
-        forAllValid $ \sstore1 -> do
-          let req1 = makeItemSyncRequest (cstore1 :: ClientItem Int)
-              (resp1, sstore2) = processServerItemSync sstore1 req1
-              cstore2 = mergeItemSyncResponseIgnoreProblems cstore1 resp1
-              req2 = makeItemSyncRequest cstore2
-              (resp2, sstore3) = processServerItemSync sstore2 req2
-              cstore3 = mergeItemSyncResponseIgnoreProblems cstore2 resp2
-          cstore2 `shouldBe` cstore3
-          sstore2 `shouldBe` sstore3
     it "succesfully syncs an addition across to a second client" $
       forAllValid $ \time1 ->
         forAllValid $ \i -> do
@@ -284,3 +273,14 @@ spec = do
           cBstore2 `shouldBe` ClientEmpty
           -- Client A and Client B now have the same store
           cAstore2 `shouldBe` cBstore2
+    it "is idempotent with one client" $
+      forAllValid $ \cstore1 ->
+        forAllValid $ \sstore1 -> do
+          let req1 = makeItemSyncRequest (cstore1 :: ClientItem Int)
+              (resp1, sstore2) = processServerItemSync sstore1 req1
+              cstore2 = mergeItemSyncResponseIgnoreProblems cstore1 resp1
+              req2 = makeItemSyncRequest cstore2
+              (resp2, sstore3) = processServerItemSync sstore2 req2
+              cstore3 = mergeItemSyncResponseIgnoreProblems cstore2 resp2
+          cstore2 `shouldBe` cstore3
+          sstore2 `shouldBe` sstore3
