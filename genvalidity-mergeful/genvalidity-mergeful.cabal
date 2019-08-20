@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a5750c7205947d6021b246576f9140c03f3739bb3366a5d26c4e9ab66580d8fb
+-- hash: fb5df4fc8f6ef1515fc26185e2475b4aa0657b5b98cc335426823f5b05d8faa7
 
 name:           genvalidity-mergeful
 version:        0.0.0.0
@@ -64,6 +64,7 @@ test-suite mergeful-test
     , hspec
     , mergeful
     , mtl
+    , pretty-show
     , random
     , time
     , typed-uuid

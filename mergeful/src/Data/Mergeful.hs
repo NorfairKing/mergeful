@@ -161,35 +161,33 @@ makeSyncRequest ClientStore {..} =
     }
 
 addedItemsIntmap :: [a] -> Map Int a
-addedItemsIntmap as = M.fromList $ zip [0 .. (length as - 1)] as
+addedItemsIntmap = M.fromList . zip [0 ..]
 
 mergeSyncResponseIgnoreProblems :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
-  ClientStore
-    { clientStoreAddedItems = []
-    , clientStoreSyncedButChangedItems = M.empty
-    , clientStoreDeletedItems = M.empty, clientStoreSyncedItems=M.empty
-    }
- --  let (addedItemsLeftovers, newSyncedItems) =
- --        mergeAddedItems (addedItemsIntmap (clientStoreAddedItems cs)) syncResponseAddedItems
- --      (syncedButNotChangedLeftovers, newModifiedItems) =
- --        mergeSyncedButChangedItems
- --          (clientStoreSyncedButChangedItems cs)
- --          syncResponseModifiedByClientItems
- --      deletedItemsLeftovers =
- --        mergeDeletedItems (clientStoreDeletedItems cs) syncResponseItemsToBeDeletedLocally
- --   in ClientStore
- --        { clientStoreAddedItems = addedItemsLeftovers
- --        , clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers
- --        , clientStoreDeletedItems = deletedItemsLeftovers
- --        , clientStoreSyncedItems =
- --            M.unions
- --              [ newSyncedItems
- --              , syncResponseNewRemoteItems
- --              , syncResponseModifiedByServerItems
- --              , newModifiedItems
- --              ]
- --        }
+  let (addedItemsLeftovers, newSyncedItems) =
+        mergeAddedItems (addedItemsIntmap (clientStoreAddedItems cs)) syncResponseAddedItems
+      (syncedButNotChangedLeftovers, newModifiedItems) =
+        mergeSyncedButChangedItems
+          (clientStoreSyncedButChangedItems cs)
+          syncResponseModifiedByClientItems
+      deletedItemsLeftovers =
+        mergeDeletedItems (clientStoreDeletedItems cs) syncResponseItemsToBeDeletedLocally
+      synced =
+        M.unions
+          [ newSyncedItems
+          , syncResponseNewRemoteItems
+          , syncResponseModifiedByServerItems
+          , newModifiedItems
+          ]
+      -- The M.difference calls only make sure that this function always produces valid values.
+      -- They are not necessary for the correct working.
+   in ClientStore
+        { clientStoreAddedItems = addedItemsLeftovers
+        , clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced
+        , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
+        , clientStoreSyncedItems = synced
+        }
 
 mergeAddedItems ::
      forall i a. Ord i
@@ -217,7 +215,7 @@ mergeSyncedButChangedItems local changed = M.foldlWithKey go (M.empty, M.empty) 
         Nothing -> (M.insert k t m1, m2)
         Just st' -> (m1, M.insert k (t {timedTime = st'}) m2)
 
-mergeDeletedItems :: Ord i => Map i ServerTime -> Set i -> (Map i ServerTime)
+mergeDeletedItems :: Ord i => Map i b -> Set i -> (Map i b)
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 
 addToSyncResponse ::

@@ -11,6 +11,7 @@ import Debug.Trace
 import Data.UUID.Typed as Typed
 import GHC.Generics (Generic)
 import System.Random
+import Text.Show.Pretty
 
 import Control.Monad.State
 
@@ -43,11 +44,26 @@ spec = do
   describe "mergeSyncedButChangedItems" $
     it "produces valid results" $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
   describe "mergeDeletedItems" $
-    it "produces valid results" $ producesValidsOnValids2 (mergeDeletedItems @Int)
+    it "produces valid results" $ producesValidsOnValids2 (mergeDeletedItems @Int @Int)
   describe "mergeSyncResponseIgnoreProblems" $
     it "produces valid requests" $
-    producesValidsOnValids2
-         (mergeSyncResponseIgnoreProblems @Int @Int)
+    forAllValid $ \store ->
+      forAllValid $ \response ->
+        let res = mergeSyncResponseIgnoreProblems @Int @Int store response
+         in case prettyValidate res of
+              Right _ -> pure ()
+              Left err ->
+                expectationFailure $
+                unlines
+                  [ "Store:"
+                  , ppShow store
+                  , "Response:"
+                  , ppShow response
+                  , "Invalid result:"
+                  , ppShow res
+                  , "error:"
+                  , err
+                  ]
   describe "processServerSync" $
     it "produces valid tuples of a response and a store" $
     producesValidsOnValids2
