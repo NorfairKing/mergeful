@@ -35,6 +35,7 @@ module Data.Mergeful
   , SyncResponse(..)
   , emptySyncResponse
   , mergeSyncResponseIgnoreProblems
+  , addedItemsIntmap
   , mergeAddedItems
   , mergeSyncedButChangedItems
   , mergeDeletedItems
@@ -180,9 +181,6 @@ makeSyncRequest ClientStore {..} =
     , syncRequestDeletedItems = clientStoreDeletedItems
     }
 
-addedItemsIntmap :: [a] -> Map Int a
-addedItemsIntmap = M.fromList . zip [0 ..]
-
 mergeSyncResponseIgnoreProblems :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
@@ -208,6 +206,9 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
         , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
         , clientStoreSyncedItems = synced
         }
+
+addedItemsIntmap :: [a] -> Map Int a
+addedItemsIntmap = M.fromList . zip [0 ..]
 
 mergeAddedItems ::
      forall i a. Ord i

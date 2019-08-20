@@ -10,8 +10,8 @@ import Debug.Trace
 
 import Data.Functor
 import Data.Functor.Identity
-import Data.Map (Map)
 import Data.List
+import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.UUID.Typed as Typed
@@ -114,6 +114,41 @@ spec = do
                   sstore2 `shouldBe` sstore3
     describe "Multiple clients" $ do
       describe "Single-item" $ do
+        it "successfully syncs an addition accross to a second client" $
+          forAllValid $ \i ->
+            evalDM $ do
+              let cAstore1 = emptyClientStore {clientStoreAddedItems = [i]}
+              -- Client B is empty
+              let cBstore1 = emptyClientStore :: ClientStore (UUID Int) Int
+              -- The server is empty
+              let sstore1 = emptyServerStore
+              -- Client A makes sync request 1
+              let req1 = makeSyncRequest cAstore1
+              -- The server processes sync request 1
+              (resp1, sstore2) <- processServerSync genD sstore1 req1
+              let time = initialServerTime
+              let addedItems = syncResponseAddedItems resp1
+              case M.toList addedItems of
+                [(0, (uuid, st))] -> do
+                  lift $ st `shouldBe` time
+                  let items = M.singleton uuid (Timed i st)
+                  lift $ sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
+                  -- Client A merges the response
+                  let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
+                  lift $ cAstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
+                  -- Client B makes sync request 2
+                  let req2 = makeSyncRequest cBstore1
+                  -- The server processes sync request 2
+                  (resp2, sstore3) <- processServerSync genD sstore2 req2
+                  lift $ do
+                    resp2 `shouldBe` (emptySyncResponse {syncResponseNewRemoteItems = items})
+                    sstore3 `shouldBe` sstore2
+                  -- Client B merges the response
+                  let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
+                  lift $ cBstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
+                  -- Client A and Client B now have the same store
+                  lift $ cAstore2 `shouldBe` cBstore2
+                _ -> lift $ expectationFailure "Should have found exactly one added item."
         it "does not run into a conflict if two clients both try to sync a deletion" $
           forAllValid $ \uuid ->
             forAllValid $ \time1 ->
@@ -154,6 +189,38 @@ spec = do
                     -- Client A and Client B now have the same store
                     cAstore2 `shouldBe` cBstore2
       describe "Multiple items" $ do
+        it "successfully syncs additions accross to a second client" $
+          forAllValid $ \is ->
+            evalDM $ do
+              let cAstore1 = emptyClientStore {clientStoreAddedItems = is}
+              -- Client B is empty
+              let cBstore1 = emptyClientStore :: ClientStore (UUID Int) Int
+              -- The server is empty
+              let sstore1 = emptyServerStore
+              -- Client A makes sync request 1
+              let req1 = makeSyncRequest cAstore1
+              -- The server processes sync request 1
+              (resp1, sstore2) <- processServerSync genD sstore1 req1
+              let time = initialServerTime
+              let (rest, items) = mergeAddedItems (addedItemsIntmap is) (syncResponseAddedItems resp1)
+              lift $ do
+                rest `shouldBe` []
+                sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
+              -- Client A merges the response
+              let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
+              lift $ cAstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
+              -- Client B makes sync request 2
+              let req2 = makeSyncRequest cBstore1
+              -- The server processes sync request 2
+              (resp2, sstore3) <- processServerSync genD sstore2 req2
+              lift $ do
+                resp2 `shouldBe` (emptySyncResponse {syncResponseNewRemoteItems = items})
+                sstore3 `shouldBe` sstore2
+              -- Client B merges the response
+              let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
+              lift $ cBstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
+              -- Client A and Client B now have the same store
+              lift $ cAstore2 `shouldBe` cBstore2
         it "does not run into a conflict if two clients both try to sync a deletion" $
           forAllValid $ \items ->
             forAllValid $ \time1 ->
