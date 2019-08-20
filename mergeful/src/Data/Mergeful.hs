@@ -23,6 +23,10 @@
 -- * The client produces a 'SyncRequest' with 'makeSyncRequest'.
 -- * The client sends that request to the central server and gets a 'SyncResponse'.
 -- * The client then updates its local store with 'mergeSyncResponseIgnoreProblems'.
+--
+-- -- WARNING:
+-- This whole approach can break down if a server resets its server times
+-- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful
   ( ClientStore(..)
   , emptyClientStore
@@ -133,7 +137,6 @@ data SyncResponse i a =
     , syncResponseConflicts :: Map i a
     , syncResponseConflictsClientDeleted :: Map i a
     , syncResponseConflictsServerDeleted :: Set i
-    , syncResponseDesyncs :: Map i ServerTime
     }
   deriving (Show, Eq, Generic)
 
@@ -157,7 +160,16 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncResponse i a) where
 
 emptySyncResponse :: SyncResponse i a
 emptySyncResponse =
-  SyncResponse M.empty M.empty M.empty M.empty S.empty M.empty M.empty S.empty M.empty
+  SyncResponse
+    { syncResponseAddedItems = M.empty
+    , syncResponseNewRemoteItems = M.empty
+    , syncResponseModifiedByServerItems = M.empty
+    , syncResponseModifiedByClientItems = M.empty
+    , syncResponseItemsToBeDeletedLocally = S.empty
+    , syncResponseConflicts = M.empty
+    , syncResponseConflictsClientDeleted = M.empty
+    , syncResponseConflictsServerDeleted = S.empty
+    }
 
 makeSyncRequest :: ClientStore i a -> SyncRequest i a
 makeSyncRequest ClientStore {..} =
@@ -253,8 +265,6 @@ addToSyncResponse sr cid i isr =
       sr {syncResponseConflictsClientDeleted = M.insert i a $ syncResponseConflictsClientDeleted sr}
     ItemSyncResponseConflictServerDeleted ->
       sr {syncResponseConflictsServerDeleted = S.insert i $syncResponseConflictsServerDeleted sr}
-    ItemSyncResponseDesynchronised st _ ->
-      sr {syncResponseDesyncs = M.insert i st $ syncResponseDesyncs sr}
 
 -- | Process a sync request from the server
 processServerSync ::
@@ -310,7 +320,7 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
         mapMaybe
           (\(cid, (i, (_, si))) ->
              case si of
-               ServerEmpty _ -> Nothing
+               ServerEmpty -> Nothing
                ServerFull t -> Just $ (i, t)) $
         M.toList resps
   pure (resp, ServerStore newStore)

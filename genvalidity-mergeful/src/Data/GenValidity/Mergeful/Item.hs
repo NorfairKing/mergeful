@@ -48,7 +48,7 @@ timedAt :: GenValid a => ServerTime -> Gen (Timed a)
 timedAt st = Timed <$> genValid <*> pure st
 
 serverItemAt :: GenValid a => ServerTime -> Gen (ServerItem a)
-serverItemAt st = oneof [pure $ ServerEmpty st, ServerFull <$> timedAt st]
+serverItemAt st = oneof [pure ServerEmpty, ServerFull <$> timedAt st]
 
 reqAt :: GenValid a => ServerTime -> Gen (ItemSyncRequest a)
 reqAt st =

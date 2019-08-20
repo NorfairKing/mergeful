@@ -21,6 +21,11 @@
 -- * The client produces a 'ItemSyncRequest' with 'makeItemSyncRequest'.
 -- * The client sends that request to the central server and gets a 'ItemSyncResponse'.
 -- * The client then updates its local store with 'mergeItemSyncResponseRaw' or 'mergeItemSyncResponseIgnoreProblems'.
+--
+--
+-- WARNING:
+-- This whole approach can break down if a server resets its server times
+-- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful.Item
   ( ClientItem(..)
   , ItemSyncRequest(..)
@@ -83,14 +88,14 @@ data ClientItem a
 instance Validity a => Validity (ClientItem a)
 
 data ServerItem a
-  = ServerEmpty !ServerTime
+  = ServerEmpty
   | ServerFull !(Timed a)
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ServerItem a)
 
 initialServerItem :: ServerItem a
-initialServerItem = ServerEmpty initialServerTime
+initialServerItem = ServerEmpty
 
 data ItemSyncRequest a
   -- | There is no item locally
@@ -160,13 +165,6 @@ data ItemSyncResponse a
   -- The server left its item deleted, the client can either delete its item too
   -- or deal with the conflict somehow, and then try to re-sync.
   | ItemSyncResponseConflictServerDeleted
-  -- | A desync ocurred.
-  --
-  -- This happens when a server's server time is reset between syncs
-  -- or when a client syncs with one server and then with another server.
-  | ItemSyncResponseDesynchronised
-      !ServerTime -- ^ Reported server time at server side
-      !(Maybe a) -- ^ The item that the server knew about
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ItemSyncResponse a)
@@ -211,21 +209,18 @@ mergeItemSyncResponseRaw cs sr =
       case sr of
         ItemSyncResponseInSyncEmpty -> MergeSuccess cs
         ItemSyncResponseNewAtServer t -> MergeSuccess $ ClientItemSynced t
-        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
         _ -> MergeMismatch
     ClientAdded ci ->
       case sr of
         ItemSyncResponseSuccesfullyAdded st ->
           MergeSuccess $ ClientItemSynced $ Timed {timedValue = ci, timedTime = st}
         ItemSyncResponseConflict si -> MergeConflict ci si
-        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
         _ -> MergeMismatch
     ClientItemSynced t ->
       case sr of
         ItemSyncResponseInSyncFull -> MergeSuccess $ ClientItemSynced t
         ItemSyncResponseModifiedAtServer st -> MergeSuccess $ ClientItemSynced st
         ItemSyncResponseDeletedAtServer -> MergeSuccess ClientEmpty
-        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
         _ -> MergeMismatch
     ClientItemSyncedButChanged ct ->
       case sr of
@@ -233,13 +228,11 @@ mergeItemSyncResponseRaw cs sr =
           MergeSuccess $ ClientItemSynced $ ct {timedTime = st}
         ItemSyncResponseConflict si -> MergeConflict (timedValue ct) si
         ItemSyncResponseConflictServerDeleted -> MergeConflictServerDeleted (timedValue ct)
-        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
         _ -> MergeMismatch
     ClientDeleted _ ->
       case sr of
         ItemSyncResponseSuccesfullyDeleted -> MergeSuccess ClientEmpty
         ItemSyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
-        ItemSyncResponseDesynchronised st msi -> MergeDesync st msi
         _ -> MergeMismatch
 
 mergeItemSyncResponseIgnoreProblems :: ClientItem a -> ItemSyncResponse a -> ClientItem a
@@ -258,87 +251,36 @@ ignoreMergeProblems cs mr =
 processServerItemSync :: ServerItem a -> ItemSyncRequest a -> (ItemSyncResponse a, ServerItem a)
 processServerItemSync store sr =
   case store of
-    ServerEmpty st ->
-      let t = incrementServerTime st
+    ServerEmpty ->
+      let t = initialServerTime
        in case sr of
             ItemSyncRequestPoll -> (ItemSyncResponseInSyncEmpty, store)
             ItemSyncRequestNew ci ->
               ( ItemSyncResponseSuccesfullyAdded t
               , ServerFull $ Timed {timedValue = ci, timedTime = t})
-            ItemSyncRequestKnown ct ->
-              case compare ct st of
-                GT
-                  -- The client time is greater than the server time.
-                  -- This can only happen if the sync server somehow
-                  -- synced this item alread, but then became 'unaware' of it.
-                  -- That is impossible in theory.
-                  --
-                  -- It indicates a desync.
-                 -> (ItemSyncResponseDesynchronised st Nothing, store)
-                EQ
-                  -- The client time is equal to the server time.
-                  -- This can only happen if the server somehow didn't update its
-                  -- time (that would be a bug), or if a desync happened.
-                 -> (ItemSyncResponseDesynchronised st Nothing, store)
-                LT
-                  -- The client time is less than the server time.
-                  -- This indicates that the server synced with another client and was told to
-                  -- delete its item.
-                  --
-                  -- Given that the client indicates that it did not change anything locally,
-                  -- the server will just instruct the client to delete its item too.
-                  -- No conflict here.
-                 -> (ItemSyncResponseDeletedAtServer, store)
-            ItemSyncRequestKnownButChanged ct ->
-              case compare (timedTime ct) st of
-                GT
-                  -- The client time is greater than the server time.
-                  -- This can only happen if the sync server somehow
-                  -- synced this item already, but then became 'unaware' of it.
-                  -- That is impossible in theory.
-                  --
-                  -- It indicates a desync.
-                 -> (ItemSyncResponseDesynchronised st Nothing, store)
-                EQ
-                  -- The client time is equal to the server time.
-                  -- This can only happen if the server somehow didn't update its
-                  -- time (that would be a bug), or if a desync happened.
-                 -> (ItemSyncResponseDesynchronised st Nothing, store)
-                LT
-                  -- The client time is less than the server time.
-                  -- This indicates that the server synced with another client and was told to
-                  -- delete its item.
-                  --
-                  -- Given that the client indicates that it *did* change its item locally,
-                  -- there is a conflict.
-                 -> (ItemSyncResponseConflictServerDeleted, store)
-            ItemSyncRequestDeletedLocally ct ->
-              case compare ct st of
-                GT
-                  -- The client time is greater than the server time.
-                  -- This can only happen if the sync server somehow
-                  -- synced this item already, but then became 'unaware' of it.
-                  -- That is impossible in theory.
-                  --
-                  -- It indicates a desync.
-                 -> (ItemSyncResponseDesynchronised st Nothing, store)
-                EQ
-                  -- The client time is equal to the server time.
-                  -- This means that the client was in sync with the server,
-                  -- and is now telling the server to delete this item,
-                  -- but the item isn't there on the server side anyway.
-                  --
-                  -- This indicates a desync
-                 -> (ItemSyncResponseDesynchronised st Nothing, store)
-                LT
-                  -- The client time is less than the server time
-                  -- This means that the server synced with another client,
-                  -- was instructed to delete its item by that client,
-                  -- and is now being told to delete its item again.
-                  --
-                  -- That's fine, it will just remain deleted.
-                  -- No conflict here
-                 -> (ItemSyncResponseSuccesfullyDeleted, store)
+            ItemSyncRequestKnown ct
+             -- This indicates that the server synced with another client and was told to
+             -- delete its item.
+             --
+             -- Given that the client indicates that it did not change anything locally,
+             -- the server will just instruct the client to delete its item too.
+             -- No conflict here.
+             -> (ItemSyncResponseDeletedAtServer, store)
+            ItemSyncRequestKnownButChanged ct
+             -- This indicates that the server synced with another client and was told to
+             -- delete its item.
+             --
+             -- Given that the client indicates that it *did* change its item locally,
+             -- there is a conflict.
+             -> (ItemSyncResponseConflictServerDeleted, store)
+            ItemSyncRequestDeletedLocally ct
+             -- This means that the server synced with another client,
+             -- was instructed to delete its item by that client,
+             -- and is now being told to delete its item again.
+             --
+             -- That's fine, it will just remain deleted.
+             -- No conflict here
+             -> (ItemSyncResponseSuccesfullyDeleted, store)
     ServerFull (Timed si st) ->
       let t = incrementServerTime st
        in case sr of
@@ -355,72 +297,40 @@ processServerItemSync store sr =
               -- The client will receive the conflict.
              -> (ItemSyncResponseConflict si, store)
             ItemSyncRequestKnown ct ->
-              case compare ct st of
-                GT
-                  -- The client time is greater than the server time.
-                  -- This can only happen if the sync server somehow
-                  -- synced this item already, but then became 'unaware' of it.
-                  -- That is impossible in theory.
-                  --
-                  -- It indicates a desync.
-                 -> (ItemSyncResponseDesynchronised st (Just si), store)
-                EQ
-                  -- The client time is equal to the server time.
-                  -- The client indicates that the item was not modified at their side.
-                  -- This means that the items are in sync.
-                  -- (Unless the server somehow modified the item but not its server time,
-                  -- which would beconsidered a bug.)
-                 -> (ItemSyncResponseInSyncFull, store)
-                LT
-                  -- The client time is less than the server time
-                  -- That means that the server has synced with another client in the meantime.
-                  -- Since the client indicates that the item was not modified at their side,
-                  -- we can just send it back to the client to have them update their version.
-                  -- No conflict here.
-                 ->
-                  ( ItemSyncResponseModifiedAtServer (Timed {timedValue = si, timedTime = st})
-                  , store)
+              if ct >= st
+                -- The client time is equal to the server time.
+                -- The client indicates that the item was not modified at their side.
+                -- This means that the items are in sync.
+                -- (Unless the server somehow modified the item but not its server time,
+                -- which would beconsidered a bug.)
+                then (ItemSyncResponseInSyncFull, store)
+                -- The client time is less than the server time
+                -- That means that the server has synced with another client in the meantime.
+                -- Since the client indicates that the item was not modified at their side,
+                -- we can just send it back to the client to have them update their version.
+                -- No conflict here.
+                else ( ItemSyncResponseModifiedAtServer (Timed {timedValue = si, timedTime = st})
+                     , store)
             ItemSyncRequestKnownButChanged (Timed {timedValue = ci, timedTime = ct}) ->
-              case compare ct st of
-                GT
-                  -- The client time is greater than the server time.
-                  -- This can only happen if the sync server somehow
-                  -- synced this item already, but then became 'unaware' of that synchronisation.
-                  -- That is impossible in theory.
-                  --
-                  -- It indicates a desync.
-                 -> (ItemSyncResponseDesynchronised st (Just si), store)
-                EQ
-                  -- The client time is equal to the server time.
-                  -- The client indicates that the item *was* modified at their side.
-                  -- This means that the server needs to be updated.
-                 ->
-                  ( ItemSyncResponseSuccesfullyChanged t
-                  , ServerFull (Timed {timedValue = ci, timedTime = t}))
-                LT
-                  -- The client time is less than the server time
-                  -- That means that the server has synced with another client in the meantime.
-                  -- Since the client indicates that the item *was* modified at their side,
-                  -- there is a conflict.
-                 -> (ItemSyncResponseConflict si, store)
+              if ct >= st
+                -- The client time is equal to the server time.
+                -- The client indicates that the item *was* modified at their side.
+                -- This means that the server needs to be updated.
+                then ( ItemSyncResponseSuccesfullyChanged t
+                     , ServerFull (Timed {timedValue = ci, timedTime = t}))
+                -- The client time is less than the server time
+                -- That means that the server has synced with another client in the meantime.
+                -- Since the client indicates that the item *was* modified at their side,
+                -- there is a conflict.
+                else (ItemSyncResponseConflict si, store)
             ItemSyncRequestDeletedLocally ct ->
-              case compare ct st of
-                GT
-                  -- The client time is greater than the server time.
-                  -- This can only happen if the sync server somehow
-                  -- synced this item already, but then became 'unaware' of that synchronisation.
-                  -- That is impossible in theory.
-                  --
-                  -- It indicates a desync.
-                 -> (ItemSyncResponseDesynchronised st (Just si), store)
-                EQ
-                  -- The client time is equal to the server time.
-                  -- The client indicates that the item was deleted on their side.
-                  -- This means that the server item needs to be deleted as well.
-                 -> (ItemSyncResponseSuccesfullyDeleted, ServerEmpty t)
-                LT
-                  -- The client time is less than the server time
-                  -- That means that the server has synced with another client in the meantime.
-                  -- Since the client indicates that the item was deleted at their side,
-                  -- there is a conflict.
-                 -> (ItemSyncResponseConflictClientDeleted si, store)
+              if ct >= st
+                -- The client time is equal to the server time.
+                -- The client indicates that the item was deleted on their side.
+                -- This means that the server item needs to be deleted as well.
+                then (ItemSyncResponseSuccesfullyDeleted, ServerEmpty)
+                -- The client time is less than the server time
+                -- That means that the server has synced with another client in the meantime.
+                -- Since the client indicates that the item was deleted at their side,
+                -- there is a conflict.
+                else (ItemSyncResponseConflictClientDeleted si, store)

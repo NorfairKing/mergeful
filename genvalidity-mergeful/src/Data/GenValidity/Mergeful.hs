@@ -69,20 +69,18 @@ instance (GenValid i, Ord i, GenValid a) => GenValid (SyncResponse i a) where
       (s09, s10) <- splitSet s04
       (s11, s12) <- splitSet s05
       (s13, s14) <- splitSet s06
-      (s15, s16) <- splitSet s07
       syncResponseAddedItems <-
         do m <- (genValid :: Gen (Map Int ()))
-           if S.null s08
+           if S.null s07
              then pure M.empty
-             else forM m $ \() -> (,) <$> elements (S.toList s08) <*> genValid
-      syncResponseNewRemoteItems <- mapWithIds s09
-      syncResponseModifiedByServerItems <- mapWithIds s10
-      syncResponseModifiedByClientItems <- mapWithIds s11
-      let syncResponseItemsToBeDeletedLocally = s12
-      syncResponseConflicts <- mapWithIds s13
-      syncResponseConflictsClientDeleted <- mapWithIds s14
-      let syncResponseConflictsServerDeleted = s15
-      syncResponseDesyncs <- mapWithIds s16
+             else forM m $ \() -> (,) <$> elements (S.toList s07) <*> genValid
+      syncResponseNewRemoteItems <- mapWithIds s08
+      syncResponseModifiedByServerItems <- mapWithIds s09
+      syncResponseModifiedByClientItems <- mapWithIds s10
+      let syncResponseItemsToBeDeletedLocally = s11
+      syncResponseConflicts <- mapWithIds s12
+      syncResponseConflictsClientDeleted <- mapWithIds s13
+      let syncResponseConflictsServerDeleted = s14
       pure SyncResponse {..}
   shrinkValid = shrinkValidStructurally
 
