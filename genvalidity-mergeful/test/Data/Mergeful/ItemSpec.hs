@@ -255,3 +255,32 @@ spec = do
           cAstore2 `shouldBe` ClientEmpty
           -- Client A and Client B now have the same store
           cAstore2 `shouldBe` cBstore2
+    it "does not run into a conflict if two clients both try to sync a deletion" $
+      forAllValid $ \time1 ->
+        forAllValid $ \i -> do
+          let cAstore1 = ClientDeleted time1
+          -- Both client a and client b delete an item.
+          let cBstore1 = ClientDeleted time1
+          -- The server still has the undeleted item
+          let sstore1 = ServerFull i time1
+          -- Client A makes sync request 1
+          let req1 = makeItemSyncRequest cAstore1
+          -- The server processes sync request 1
+          let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
+          let time2 = incrementServerTime time1
+          resp1 `shouldBe` ItemSyncResponseSuccesfullyDeleted
+          sstore2 `shouldBe` ServerEmpty time2
+          -- Client A merges the response
+          let cAstore2 = mergeItemSyncResponseIgnoreProblems cAstore1 resp1
+          cAstore2 `shouldBe` ClientEmpty
+          -- Client B makes sync request 2
+          let req2 = makeItemSyncRequest cBstore1
+          -- The server processes sync request 2
+          let (resp2, sstore3) = processServerItemSync sstore2 req2
+          resp2 `shouldBe` ItemSyncResponseSuccesfullyDeleted
+          sstore3 `shouldBe` ServerEmpty time2
+          -- Client B merges the response
+          let cBstore2 = mergeItemSyncResponseIgnoreProblems cBstore1 resp2
+          cBstore2 `shouldBe` ClientEmpty
+          -- Client A and Client B now have the same store
+          cAstore2 `shouldBe` cBstore2

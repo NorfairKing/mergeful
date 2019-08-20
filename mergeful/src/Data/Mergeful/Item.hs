@@ -44,10 +44,15 @@ import Data.Validity
 import Data.Word
 
 data ClientItem a
+  -- | There is no item on the client side
   = ClientEmpty
+  -- | There is is an item but the server is not aware of it yet.
   | ClientAdded a
+  -- | There is is an item and it has been synced with the server.
   | ClientItemSynced a ServerTime
-  | ClientItemSyncedButChanged a ServerTime -- The item has been synced with the server but since modified.
+  -- | There is is an item and it has been synced with the server, but it has since been modified.
+  | ClientItemSyncedButChanged a ServerTime
+  -- | There was an item, and it has been deleted locally, but the server has not been made aware of this.
   | ClientDeleted ServerTime
   deriving (Show, Eq, Generic)
 
@@ -78,10 +83,17 @@ initialServerItem :: ServerItem a
 initialServerItem = ServerEmpty initialServerTime
 
 data ItemSyncRequest a
+  -- | There is no item locally
   = ItemSyncRequestPoll
+  -- | There is an item locally that hasn't been synced to the server yet.
   | ItemSyncRequestNew a
+  -- | There is an item locally that was synced at the given 'ServerTime'
   | ItemSyncRequestKnown ServerTime
+  -- | There is an item locally that was synced at the given 'ServerTime'
+  -- but it has been changed since then.
   | ItemSyncRequestKnownButChanged a ServerTime
+  -- | There was an item locally that has been deleted but the
+  -- deletion wasn't synced to the server yet.
   | ItemSyncRequestDeletedLocally ServerTime
   deriving (Show, Eq, Generic)
 
@@ -268,7 +280,7 @@ processServerItemSync store sr =
                 GT
                   -- The client time is greater than the server time.
                   -- This can only happen if the sync server somehow
-                  -- synced this item alread, but then became 'unaware' of it.
+                  -- synced this item already, but then became 'unaware' of it.
                   -- That is impossible in theory.
                   --
                   -- It indicates a desync.
@@ -286,7 +298,33 @@ processServerItemSync store sr =
                   -- Given that the client indicates that it *did* change its item locally,
                   -- there is a conflict.
                  -> (ItemSyncResponseConflictServerDeleted, store)
-            ItemSyncRequestDeletedLocally _ -> (ItemSyncResponseDesynchronised st Nothing, store)
+            ItemSyncRequestDeletedLocally ct ->
+              case compare ct st of
+                GT
+                  -- The client time is greater than the server time.
+                  -- This can only happen if the sync server somehow
+                  -- synced this item already, but then became 'unaware' of it.
+                  -- That is impossible in theory.
+                  --
+                  -- It indicates a desync.
+                 -> (ItemSyncResponseDesynchronised st Nothing, store)
+                EQ
+                  -- The client time is equal to the server time.
+                  -- This means that the client was in sync with the server,
+                  -- and is now telling the server to delete this item,
+                  -- but the item isn't there on the server side anyway.
+                  --
+                  -- This indicates a desync
+                 -> (ItemSyncResponseDesynchronised st Nothing, store)
+                LT
+                  -- The client time is less than the server time
+                  -- This means that the server synced with another client,
+                  -- was instructed to delete its item by that client,
+                  -- and is now being told to delete its item again.
+                  --
+                  -- That's fine, it will just remain deleted.
+                  -- No conflict here
+                 -> (ItemSyncResponseSuccesfullyDeleted, store)
     ServerFull si st ->
       let t = incrementServerTime st
        in case sr of
