@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9efa5cc2862c8bef2f55dc46c4fd9fcd43128c6f0352d65e7c6cff7da5e4a3e3
+-- hash: fb5df4fc8f6ef1515fc26185e2475b4aa0657b5b98cc335426823f5b05d8faa7
 
 name:           genvalidity-mergeful
 version:        0.0.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      Data.GenValidity.Mergeful
       Data.GenValidity.Mergeful.Item
   other-modules:
       Paths_genvalidity_mergeful
@@ -35,6 +36,7 @@ library
   build-depends:
       QuickCheck
     , base >=4.7 && <5
+    , containers
     , genvalidity
     , genvalidity-containers
     , genvalidity-time
@@ -46,6 +48,7 @@ test-suite mergeful-test
   main-is: Spec.hs
   other-modules:
       Data.Mergeful.ItemSpec
+      Data.MergefulSpec
       Paths_genvalidity_mergeful
   hs-source-dirs:
       test
@@ -61,6 +64,7 @@ test-suite mergeful-test
     , hspec
     , mergeful
     , mtl
+    , pretty-show
     , random
     , time
     , typed-uuid

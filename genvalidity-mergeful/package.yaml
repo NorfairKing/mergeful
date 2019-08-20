@@ -18,6 +18,7 @@ library:
   dependencies:
     - base >= 4.7 && < 5
     - QuickCheck
+    - containers
     - genvalidity
     - genvalidity-containers
     - genvalidity-time
@@ -32,16 +33,17 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-      - QuickCheck
       - base >= 4.7 && < 5
+      - QuickCheck
       - containers
       - genvalidity-hspec
-      - genvalidity-typed-uuid
       - genvalidity-hspec-aeson
       - genvalidity-mergeful
+      - genvalidity-typed-uuid
       - hspec
       - mergeful
       - mtl
+      - pretty-show
       - random
       - time
       - typed-uuid
