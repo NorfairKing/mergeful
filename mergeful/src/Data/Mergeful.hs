@@ -260,7 +260,8 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
         { clientStoreAddedItems = addedItemsLeftovers
         , clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced
         , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
-        , clientStoreSyncedItems = synced
+        , clientStoreSyncedItems =
+            synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
         }
 
 addedItemsIntmap :: [a] -> Map Int a
