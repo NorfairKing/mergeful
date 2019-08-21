@@ -125,10 +125,10 @@ spec = do
               let req1 = makeSyncRequest cAstore1
               -- The server processes sync request 1
               (resp1, sstore2) <- processServerSync genD sstore1 req1
-              let time = initialServerTime
-              let addedItems = syncResponseAddedItems resp1
+              let addedItems = syncResponseClientAdded resp1
               case M.toList addedItems of
                 [(0, (uuid, st))] -> do
+                  let time = initialServerTime
                   lift $ st `shouldBe` time
                   let items = M.singleton uuid (Timed i st)
                   lift $ sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
@@ -140,7 +140,7 @@ spec = do
                   -- The server processes sync request 2
                   (resp2, sstore3) <- processServerSync genD sstore2 req2
                   lift $ do
-                    resp2 `shouldBe` (emptySyncResponse {syncResponseNewRemoteItems = items})
+                    resp2 `shouldBe` (emptySyncResponse {syncResponseServerAdded = items})
                     sstore3 `shouldBe` sstore2
                   -- Client B merges the response
                   let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
@@ -172,8 +172,7 @@ spec = do
                     let time2 = incrementServerTime time1
                     lift $ do
                       resp1 `shouldBe`
-                        emptySyncResponse
-                          {syncResponseModifiedByClientItems = M.singleton uuid time2}
+                        emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2}
                       sstore2 `shouldBe`
                         ServerStore {serverStoreItems = M.singleton uuid (Timed j time2)}
                     -- Client B merges the response
@@ -188,7 +187,7 @@ spec = do
                     lift $ do
                       resp2 `shouldBe`
                         emptySyncResponse
-                          {syncResponseModifiedByServerItems = M.singleton uuid (Timed j time2)}
+                          {syncResponseServerChanged = M.singleton uuid (Timed j time2)}
                       sstore3 `shouldBe` sstore2
                     -- Client A merges the response
                     let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
@@ -218,7 +217,7 @@ spec = do
                   (resp1, sstore2) <- processServerSync genD sstore1 req1
                   lift $ do
                     resp1 `shouldBe`
-                      emptySyncResponse {syncResponseItemsToBeDeletedLocally = S.singleton uuid}
+                      emptySyncResponse {syncResponseClientDeleted = S.singleton uuid}
                     sstore2 `shouldBe` emptyServerStore
                   -- Client B merges the response
                   let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
@@ -229,7 +228,7 @@ spec = do
                   (resp2, sstore3) <- processServerSync genD sstore2 req2
                   lift $ do
                     resp2 `shouldBe`
-                      emptySyncResponse {syncResponseItemsToBeDeletedLocally = S.singleton uuid}
+                      emptySyncResponse {syncResponseServerDeleted = S.singleton uuid}
                     sstore3 `shouldBe` sstore2
                   -- Client A merges the response
                   let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
@@ -255,7 +254,7 @@ spec = do
                   (resp1, sstore2) <- processServerSync genD sstore1 req1
                   lift $ do
                     resp1 `shouldBe`
-                      (emptySyncResponse {syncResponseItemsToBeDeletedLocally = S.singleton uuid})
+                      (emptySyncResponse {syncResponseClientDeleted = S.singleton uuid})
                     sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty}) -- TODO will probably need some sort of tombstoning.
                   -- Client A merges the response
                   let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
@@ -266,7 +265,7 @@ spec = do
                   (resp2, sstore3) <- processServerSync genD sstore2 req2
                   lift $ do
                     resp2 `shouldBe`
-                      (emptySyncResponse {syncResponseItemsToBeDeletedLocally = S.singleton uuid})
+                      (emptySyncResponse {syncResponseClientDeleted = S.singleton uuid})
                     sstore3 `shouldBe` sstore2
                   -- Client B merges the response
                   let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
@@ -288,7 +287,7 @@ spec = do
               -- The server processes sync request 1
               (resp1, sstore2) <- processServerSync genD sstore1 req1
               let (rest, items) =
-                    mergeAddedItems (addedItemsIntmap is) (syncResponseAddedItems resp1)
+                    mergeAddedItems (addedItemsIntmap is) (syncResponseClientAdded resp1)
               lift $ do
                 rest `shouldBe` []
                 sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
@@ -300,7 +299,7 @@ spec = do
               -- The server processes sync request 2
               (resp2, sstore3) <- processServerSync genD sstore2 req2
               lift $ do
-                resp2 `shouldBe` (emptySyncResponse {syncResponseNewRemoteItems = items})
+                resp2 `shouldBe` (emptySyncResponse {syncResponseServerAdded = items})
                 sstore3 `shouldBe` sstore2
               -- Client B merges the response
               let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
@@ -325,7 +324,7 @@ spec = do
                 -- The server processes sync request 1
                 (resp1, sstore2) <- processServerSync genD sstore1 req1
                 lift $ do
-                  resp1 `shouldBe` emptySyncResponse {syncResponseItemsToBeDeletedLocally = itemIds}
+                  resp1 `shouldBe` emptySyncResponse {syncResponseClientDeleted = itemIds}
                   sstore2 `shouldBe` emptyServerStore
                 -- Client B merges the response
                 let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
@@ -335,7 +334,7 @@ spec = do
                 -- The server processes sync request 2
                 (resp2, sstore3) <- processServerSync genD sstore2 req2
                 lift $ do
-                  resp2 `shouldBe` emptySyncResponse {syncResponseItemsToBeDeletedLocally = itemIds}
+                  resp2 `shouldBe` emptySyncResponse {syncResponseServerDeleted = itemIds}
                   sstore3 `shouldBe` sstore2
                 -- Client A merges the response
                 let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
@@ -361,8 +360,7 @@ spec = do
                 -- The server processes sync request 1
                 (resp1, sstore2) <- processServerSync genD sstore1 req1
                 lift $ do
-                  resp1 `shouldBe`
-                    (emptySyncResponse {syncResponseItemsToBeDeletedLocally = M.keysSet items})
+                  resp1 `shouldBe` (emptySyncResponse {syncResponseClientDeleted = M.keysSet items})
                   sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty}) -- TODO will probably need some sort of tombstoning.
                 -- Client A merges the response
                 let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
@@ -372,8 +370,7 @@ spec = do
                 -- The server processes sync request 2
                 (resp2, sstore3) <- processServerSync genD sstore2 req2
                 lift $ do
-                  resp2 `shouldBe`
-                    (emptySyncResponse {syncResponseItemsToBeDeletedLocally = M.keysSet items})
+                  resp2 `shouldBe` (emptySyncResponse {syncResponseClientDeleted = M.keysSet items})
                   sstore3 `shouldBe` sstore2
                 -- Client B merges the response
                 let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2

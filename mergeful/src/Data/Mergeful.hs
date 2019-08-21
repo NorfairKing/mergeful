@@ -159,11 +159,12 @@ instance (ToJSONKey i, ToJSON a) => ToJSON (SyncRequest i a) where
 
 data SyncResponse i a =
   SyncResponse
-    { syncResponseAddedItems :: Map Int (i, ServerTime) -- TODO replace by an intmap
-    , syncResponseNewRemoteItems :: Map i (Timed a)
-    , syncResponseModifiedByServerItems :: Map i (Timed a)
-    , syncResponseModifiedByClientItems :: Map i ServerTime
-    , syncResponseItemsToBeDeletedLocally :: Set i
+    { syncResponseClientAdded :: Map Int (i, ServerTime) -- TODO replace by an intmap
+    , syncResponseClientChanged :: Map i ServerTime
+    , syncResponseClientDeleted :: Set i
+    , syncResponseServerAdded :: Map i (Timed a)
+    , syncResponseServerChanged :: Map i (Timed a)
+    , syncResponseServerDeleted :: Set i
     , syncResponseConflicts :: Map i a
     , syncResponseConflictsClientDeleted :: Map i a
     , syncResponseConflictsServerDeleted :: Set i
@@ -177,11 +178,12 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncResponse i a) where
       , declare "There are no duplicate IDs" $
         distinct $
         concat $
-        [ map (\(_, (i, _)) -> i) $ M.toList syncResponseAddedItems
-        , M.keys syncResponseNewRemoteItems
-        , M.keys syncResponseModifiedByServerItems
-        , M.keys syncResponseModifiedByClientItems
-        , S.toList syncResponseItemsToBeDeletedLocally
+        [ map (\(_, (i, _)) -> i) $ M.toList syncResponseClientAdded
+        , M.keys syncResponseClientChanged
+        , S.toList syncResponseClientDeleted
+        , M.keys syncResponseServerAdded
+        , M.keys syncResponseServerChanged
+        , S.toList syncResponseServerDeleted
         , M.keys syncResponseConflicts
         , M.keys syncResponseConflictsClientDeleted
         , S.toList syncResponseConflictsServerDeleted
@@ -191,9 +193,10 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncResponse i a) where
 instance (Ord i, FromJSON i, FromJSONKey i, FromJSON a) => FromJSON (SyncResponse i a) where
   parseJSON =
     withObject "SyncResponse" $ \o ->
-      SyncResponse <$> o .: "client-added" <*> o .: "server-added" <*> o .: "server-changed" <*>
-      o .: "client-changed" <*>
-      o .: "client-deleted" <*>
+      SyncResponse <$> o .: "client-added" <*> o .: "client-changed" <*> o .: "client-deleted" <*>
+      o .: "server-added" <*>
+      o .: "server-changed" <*>
+      o .: "server-deleted" <*>
       o .: "conflict" <*>
       o .: "conflict-client-deleted" <*>
       o .: "conflict-server-deleted"
@@ -201,11 +204,12 @@ instance (Ord i, FromJSON i, FromJSONKey i, FromJSON a) => FromJSON (SyncRespons
 instance (ToJSON i, ToJSONKey i, ToJSON a) => ToJSON (SyncResponse i a) where
   toJSON SyncResponse {..} =
     object
-      [ "client-added" .= syncResponseAddedItems
-      , "server-added" .= syncResponseNewRemoteItems
-      , "server-changed" .= syncResponseModifiedByServerItems
-      , "client-changed" .= syncResponseModifiedByClientItems
-      , "client-deleted" .= syncResponseItemsToBeDeletedLocally
+      [ "client-added" .= syncResponseClientAdded
+      , "client-changed" .= syncResponseClientChanged
+      , "client-deleted" .= syncResponseClientDeleted
+      , "server-added" .= syncResponseServerAdded
+      , "server-changed" .= syncResponseServerChanged
+      , "server-deleted" .= syncResponseServerDeleted
       , "conflict" .= syncResponseConflicts
       , "conflict-client-deleted" .= syncResponseConflictsClientDeleted
       , "conflict-server-deleted" .= syncResponseConflictsServerDeleted
@@ -214,11 +218,12 @@ instance (ToJSON i, ToJSONKey i, ToJSON a) => ToJSON (SyncResponse i a) where
 emptySyncResponse :: SyncResponse i a
 emptySyncResponse =
   SyncResponse
-    { syncResponseAddedItems = M.empty
-    , syncResponseNewRemoteItems = M.empty
-    , syncResponseModifiedByServerItems = M.empty
-    , syncResponseModifiedByClientItems = M.empty
-    , syncResponseItemsToBeDeletedLocally = S.empty
+    { syncResponseClientAdded = M.empty
+    , syncResponseClientChanged = M.empty
+    , syncResponseClientDeleted = S.empty
+    , syncResponseServerAdded = M.empty
+    , syncResponseServerChanged = M.empty
+    , syncResponseServerDeleted = S.empty
     , syncResponseConflicts = M.empty
     , syncResponseConflictsClientDeleted = M.empty
     , syncResponseConflictsServerDeleted = S.empty
@@ -236,18 +241,16 @@ makeSyncRequest ClientStore {..} =
 mergeSyncResponseIgnoreProblems :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
-        mergeAddedItems (addedItemsIntmap (clientStoreAddedItems cs)) syncResponseAddedItems
+        mergeAddedItems (addedItemsIntmap (clientStoreAddedItems cs)) syncResponseClientAdded
       (syncedButNotChangedLeftovers, newModifiedItems) =
-        mergeSyncedButChangedItems
-          (clientStoreSyncedButChangedItems cs)
-          syncResponseModifiedByClientItems
+        mergeSyncedButChangedItems (clientStoreSyncedButChangedItems cs) syncResponseClientChanged
       deletedItemsLeftovers =
-        mergeDeletedItems (clientStoreDeletedItems cs) syncResponseItemsToBeDeletedLocally
+        mergeDeletedItems (clientStoreDeletedItems cs) syncResponseClientDeleted
       synced =
         M.unions
           [ newSyncedItems
-          , syncResponseNewRemoteItems
-          , syncResponseModifiedByServerItems
+          , syncResponseServerAdded
+          , syncResponseServerChanged
           , newModifiedItems
           , clientStoreSyncedItems cs
           ]
@@ -299,7 +302,7 @@ addToSyncResponse sr cid isr =
     BothServerAndClient i int ->
       case isr of
         ItemSyncResponseSuccesfullyAdded st ->
-          sr {syncResponseAddedItems = M.insert int (i, st) $ syncResponseAddedItems sr}
+          sr {syncResponseClientAdded = M.insert int (i, st) $ syncResponseClientAdded sr}
         _ -> error "should not happen"
     OnlyServer i ->
       case isr of
@@ -307,27 +310,15 @@ addToSyncResponse sr cid isr =
         ItemSyncResponseInSyncFull -> sr
         ItemSyncResponseSuccesfullyAdded _ -> error "should not happen."
         ItemSyncResponseSuccesfullyChanged st ->
-          sr
-            { syncResponseModifiedByClientItems =
-                M.insert i st $ syncResponseModifiedByClientItems sr
-            }
+          sr {syncResponseClientChanged = M.insert i st $ syncResponseClientChanged sr}
         ItemSyncResponseSuccesfullyDeleted ->
-          sr
-            { syncResponseItemsToBeDeletedLocally =
-                S.insert i $ syncResponseItemsToBeDeletedLocally sr
-            }
+          sr {syncResponseClientDeleted = S.insert i $ syncResponseClientDeleted sr}
         ItemSyncResponseNewAtServer t ->
-          sr {syncResponseNewRemoteItems = M.insert i t $ syncResponseNewRemoteItems sr}
+          sr {syncResponseServerAdded = M.insert i t $ syncResponseServerAdded sr}
         ItemSyncResponseModifiedAtServer t ->
-          sr
-            { syncResponseModifiedByServerItems =
-                M.insert i t $ syncResponseModifiedByServerItems sr
-            }
+          sr {syncResponseServerChanged = M.insert i t $ syncResponseServerChanged sr}
         ItemSyncResponseDeletedAtServer ->
-          sr
-            { syncResponseItemsToBeDeletedLocally =
-                S.insert i $ syncResponseItemsToBeDeletedLocally sr
-            }
+          sr {syncResponseServerDeleted = S.insert i $ syncResponseServerDeleted sr}
         ItemSyncResponseConflict a ->
           sr {syncResponseConflicts = M.insert i a $ syncResponseConflicts sr}
         ItemSyncResponseConflictClientDeleted a ->
