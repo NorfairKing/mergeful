@@ -53,6 +53,8 @@ import Data.Aeson as JSON
 import Data.Validity
 import Data.Word
 
+import Control.Applicative
+
 newtype ServerTime =
   ServerTime
     { unServerTime :: Word64
@@ -128,9 +130,17 @@ data ServerItem a
 
 instance Validity a => Validity (ServerItem a)
 
-instance FromJSON a => FromJSON (ServerItem a)
+instance FromJSON a => FromJSON (ServerItem a) where
+  parseJSON =
+    withObject "ServerItem" $ \o ->
+      ServerFull <$> (Timed <$> o .: "value" <*> o .: "time") <|> pure ServerEmpty
 
-instance ToJSON a => ToJSON (ServerItem a)
+instance ToJSON a => ToJSON (ServerItem a) where
+  toJSON si =
+    object $
+    case si of
+      ServerEmpty -> []
+      ServerFull Timed {..} -> ["value" .= timedValue, "time" .= timedTime]
 
 initialServerItem :: ServerItem a
 initialServerItem = ServerEmpty
@@ -167,15 +177,15 @@ instance FromJSON a => FromJSON (ItemSyncRequest a) where
 instance ToJSON a => ToJSON (ItemSyncRequest a) where
   toJSON ci =
     object $
-        let o n rest = ("type" .= (n :: String)):rest
-            oe n = o n []
-        in case ci of
+    let o n rest = ("type" .= (n :: String)) : rest
+        oe n = o n []
+     in case ci of
           ItemSyncRequestPoll -> oe "empty"
           ItemSyncRequestNew a -> o "added" ["value" .= a]
           ItemSyncRequestKnown t -> o "synced" ["time" .= t]
           ItemSyncRequestKnownButChanged Timed {..} ->
             o "changed" ["value" .= timedValue, "time" .= timedTime]
-          ItemSyncRequestDeletedLocally t -> o "deleted" [ "time" .= t]
+          ItemSyncRequestDeletedLocally t -> o "deleted" ["time" .= t]
 
 data ItemSyncResponse a
   -- | The client and server are fully in sync, and both empty

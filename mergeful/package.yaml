@@ -20,6 +20,7 @@ library:
     - aeson
     - containers
     - mtl
+    - text
     - these
     - time
     - validity

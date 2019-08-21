@@ -26,7 +26,7 @@
 -- * The client sends that request to the central server and gets a 'SyncResponse'.
 -- * The client then updates its local store with 'mergeSyncResponseIgnoreProblems'.
 --
--- -- WARNING:
+-- WARNING:
 -- This whole approach can break down if a server resets its server times
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful
@@ -57,8 +57,10 @@ import Data.Aeson
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Text (Text)
 import Data.These
 import Data.Validity
 import Data.Validity.Containers ()
@@ -90,16 +92,19 @@ instance (Validity i, Ord i, Validity a) => Validity (ClientStore i a) where
 instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (ClientStore i a) where
   parseJSON =
     withObject "ClientStore" $ \o ->
-      ClientStore <$> o .: "added" <*> o .: "synced" <*> o .: "changed" <*> o .: "deleted"
+      ClientStore <$> o .:? "added" .!= [] <*> o .:? "synced" .!= M.empty <*>
+      o .:? "changed" .!= M.empty <*>
+      o .:? "deleted" .!= M.empty
 
 instance (ToJSONKey i, ToJSON a) => ToJSON (ClientStore i a) where
   toJSON ClientStore {..} =
-    object
-      [ "added" .= clientStoreAddedItems
-      , "synced" .= clientStoreSyncedItems
-      , "changed" .= clientStoreSyncedButChangedItems
-      , "deleted" .= clientStoreDeletedItems
-      ]
+    object $
+    catMaybes $
+    [ jNull "added" clientStoreAddedItems
+    , jNull "synced" clientStoreSyncedItems
+    , jNull "changed" clientStoreSyncedButChangedItems
+    , jNull "deleted" clientStoreDeletedItems
+    ]
 
 emptyClientStore :: ClientStore i a
 emptyClientStore =
@@ -146,16 +151,19 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncRequest i a) where
 instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (SyncRequest i a) where
   parseJSON =
     withObject "SyncRequest" $ \o ->
-      SyncRequest <$> o .: "new" <*> o .: "synced" <*> o .: "changed" <*> o .: "deleted"
+      SyncRequest <$> o .:? "new" .!= M.empty <*> o .:? "synced" .!= M.empty <*>
+      o .:? "changed" .!= M.empty <*>
+      o .:? "deleted" .!= M.empty
 
 instance (ToJSONKey i, ToJSON a) => ToJSON (SyncRequest i a) where
   toJSON SyncRequest {..} =
-    object
-      [ "new" .= syncRequestNewItems
-      , "synced" .= syncRequestKnownItems
-      , "changed" .= syncRequestKnownButChangedItems
-      , "deleted" .= syncRequestDeletedItems
-      ]
+    object $
+    catMaybes $
+    [ jNull "new" syncRequestNewItems
+    , jNull "synced" syncRequestKnownItems
+    , jNull "changed" syncRequestKnownButChangedItems
+    , jNull "deleted" syncRequestDeletedItems
+    ]
 
 data SyncResponse i a =
   SyncResponse
@@ -193,27 +201,29 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncResponse i a) where
 instance (Ord i, FromJSON i, FromJSONKey i, FromJSON a) => FromJSON (SyncResponse i a) where
   parseJSON =
     withObject "SyncResponse" $ \o ->
-      SyncResponse <$> o .: "client-added" <*> o .: "client-changed" <*> o .: "client-deleted" <*>
-      o .: "server-added" <*>
-      o .: "server-changed" <*>
-      o .: "server-deleted" <*>
-      o .: "conflict" <*>
-      o .: "conflict-client-deleted" <*>
-      o .: "conflict-server-deleted"
+      SyncResponse <$> o .:? "client-added" .!= M.empty <*> o .:? "client-changed" .!= M.empty <*>
+      o .:? "client-deleted" .!= S.empty <*>
+      o .:? "server-added" .!= M.empty <*>
+      o .:? "server-changed" .!= M.empty <*>
+      o .:? "server-deleted" .!= S.empty <*>
+      o .:? "conflict" .!= M.empty <*>
+      o .:? "conflict-client-deleted" .!= M.empty <*>
+      o .:? "conflict-server-deleted" .!= S.empty
 
 instance (ToJSON i, ToJSONKey i, ToJSON a) => ToJSON (SyncResponse i a) where
   toJSON SyncResponse {..} =
-    object
-      [ "client-added" .= syncResponseClientAdded
-      , "client-changed" .= syncResponseClientChanged
-      , "client-deleted" .= syncResponseClientDeleted
-      , "server-added" .= syncResponseServerAdded
-      , "server-changed" .= syncResponseServerChanged
-      , "server-deleted" .= syncResponseServerDeleted
-      , "conflict" .= syncResponseConflicts
-      , "conflict-client-deleted" .= syncResponseConflictsClientDeleted
-      , "conflict-server-deleted" .= syncResponseConflictsServerDeleted
-      ]
+    object $
+    catMaybes $
+    [ jNull "client-added" syncResponseClientAdded
+    , jNull "client-changed" syncResponseClientChanged
+    , jNull "client-deleted" syncResponseClientDeleted
+    , jNull "server-added" syncResponseServerAdded
+    , jNull "server-changed" syncResponseServerChanged
+    , jNull "server-deleted" syncResponseServerDeleted
+    , jNull "conflict" syncResponseConflicts
+    , jNull "conflict-client-deleted" syncResponseConflictsClientDeleted
+    , jNull "conflict-server-deleted" syncResponseConflictsServerDeleted
+    ]
 
 emptySyncResponse :: SyncResponse i a
 emptySyncResponse =
@@ -228,6 +238,12 @@ emptySyncResponse =
     , syncResponseConflictsClientDeleted = M.empty
     , syncResponseConflictsServerDeleted = S.empty
     }
+
+jNull :: (Foldable f, ToJSON (f b)) => Text -> f b -> Maybe (Text, Value)
+jNull n s =
+  if null s
+    then Nothing
+    else Just $ n .= s
 
 makeSyncRequest :: ClientStore i a -> SyncRequest i a
 makeSyncRequest ClientStore {..} =
@@ -254,8 +270,6 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
           , newModifiedItems
           , clientStoreSyncedItems cs
           ]
-      -- The M.difference calls only make sure that this function always produces valid values.
-      -- They are not necessary for the correct working.
    in ClientStore
         { clientStoreAddedItems = addedItemsLeftovers
         , clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced
@@ -397,17 +411,11 @@ data ClientId i
   | BothServerAndClient i Int
   deriving (Show, Eq, Ord, Generic)
 
-distinct :: Eq a => [a] -> Bool
-distinct ls = nub ls == ls
-
-data Some a b
-  = One a
-  | Other b
-  | Both a b
-  deriving (Show, Eq, Generic)
-
 unionThese :: Ord k => Map k a -> Map k b -> Map k (These a b)
 unionThese m1 m2 = M.unionWith go (M.map This m1) (M.map That m2)
   where
     go (This a) (That b) = These a b
     go _ _ = error "should not happen."
+
+distinct :: Eq a => [a] -> Bool
+distinct ls = nub ls == ls
