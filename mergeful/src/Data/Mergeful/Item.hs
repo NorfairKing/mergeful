@@ -167,13 +167,15 @@ instance FromJSON a => FromJSON (ItemSyncRequest a) where
 instance ToJSON a => ToJSON (ItemSyncRequest a) where
   toJSON ci =
     object $
-    case ci of
-      ItemSyncRequestPoll -> ["type" .= ("empty" :: String)]
-      ItemSyncRequestNew a -> ["type" .= ("added" :: String), "value" .= a]
-      ItemSyncRequestKnown t -> ["type" .= ("synced" :: String), "time" .= t]
-      ItemSyncRequestKnownButChanged Timed {..} ->
-        ["type" .= ("changed" :: String), "value" .= timedValue, "time" .= timedTime]
-      ItemSyncRequestDeletedLocally t -> ["type" .= ("deleted" :: String), "time" .= t]
+        let o n rest = ("type" .= (n :: String)):rest
+            oe n = o n []
+        in case ci of
+          ItemSyncRequestPoll -> oe "empty"
+          ItemSyncRequestNew a -> o "added" ["value" .= a]
+          ItemSyncRequestKnown t -> o "synced" ["time" .= t]
+          ItemSyncRequestKnownButChanged Timed {..} ->
+            o "changed" ["value" .= timedValue, "time" .= timedTime]
+          ItemSyncRequestDeletedLocally t -> o "deleted" [ "time" .= t]
 
 data ItemSyncResponse a
   -- | The client and server are fully in sync, and both empty
