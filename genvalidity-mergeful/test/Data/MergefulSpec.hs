@@ -307,6 +307,41 @@ spec = do
               lift $ cBstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
               -- Client A and Client B now have the same store
               lift $ cAstore2 `shouldBe` cBstore2
+        it "succesfully syncs deletions across to a second client" $
+          forAllValid $ \items ->
+            forAllValid $ \time1 ->
+              evalDM $ do
+                let syncedItems = M.map (\i -> Timed i time1) (items :: Map (UUID Int) Int)
+                    itemTimes = M.map (const time1) items
+                    itemIds = M.keysSet items
+                let cAstore1 = emptyClientStore {clientStoreSyncedItems = syncedItems}
+                -- Client A has synced items
+                -- Client B had synced the same items, but has since deleted them.
+                let cBstore1 = emptyClientStore {clientStoreDeletedItems = itemTimes}
+                -- The server still has the undeleted item
+                let sstore1 = ServerStore {serverStoreItems = syncedItems}
+                -- Client B makes sync request 1
+                let req1 = makeSyncRequest cBstore1
+                -- The server processes sync request 1
+                (resp1, sstore2) <- processServerSync genD sstore1 req1
+                lift $ do
+                  resp1 `shouldBe` emptySyncResponse {syncResponseItemsToBeDeletedLocally = itemIds}
+                  sstore2 `shouldBe` emptyServerStore
+                -- Client B merges the response
+                let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
+                lift $ cBstore2 `shouldBe` emptyClientStore
+                -- Client A makes sync request 2
+                let req2 = makeSyncRequest cAstore1
+                -- The server processes sync request 2
+                (resp2, sstore3) <- processServerSync genD sstore2 req2
+                lift $ do
+                  resp2 `shouldBe` emptySyncResponse {syncResponseItemsToBeDeletedLocally = itemIds}
+                  sstore3 `shouldBe` sstore2
+                -- Client A merges the response
+                let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
+                lift $ cAstore2 `shouldBe` emptyClientStore
+                -- Client A and Client B now have the same store
+                lift $ cAstore2 `shouldBe` cBstore2
         it "does not run into a conflict if two clients both try to sync a deletion" $
           forAllValid $ \items ->
             forAllValid $ \time1 ->
