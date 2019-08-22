@@ -316,23 +316,23 @@ addToSyncResponse sr cid isr =
   case cid of
     BothServerAndClient i int ->
       case isr of
-        ItemSyncResponseSuccesfullyAdded st ->
+        ItemSyncResponseClientAdded st ->
           sr {syncResponseClientAdded = M.insert int (i, st) $ syncResponseClientAdded sr}
         _ -> error "should not happen"
     OnlyServer i ->
       case isr of
         ItemSyncResponseInSyncEmpty -> sr
         ItemSyncResponseInSyncFull -> sr
-        ItemSyncResponseSuccesfullyAdded _ -> error "should not happen."
-        ItemSyncResponseSuccesfullyChanged st ->
+        ItemSyncResponseClientAdded _ -> error "should not happen."
+        ItemSyncResponseClientChanged st ->
           sr {syncResponseClientChanged = M.insert i st $ syncResponseClientChanged sr}
-        ItemSyncResponseSuccesfullyDeleted ->
+        ItemSyncResponseClientDeleted ->
           sr {syncResponseClientDeleted = S.insert i $ syncResponseClientDeleted sr}
-        ItemSyncResponseNewAtServer t ->
+        ItemSyncResponseServerAdded t ->
           sr {syncResponseServerAdded = M.insert i t $ syncResponseServerAdded sr}
-        ItemSyncResponseModifiedAtServer t ->
+        ItemSyncResponseServerChanged t ->
           sr {syncResponseServerChanged = M.insert i t $ syncResponseServerChanged sr}
-        ItemSyncResponseDeletedAtServer ->
+        ItemSyncResponseServerDeleted ->
           sr {syncResponseServerDeleted = S.insert i $ syncResponseServerDeleted sr}
         ItemSyncResponseConflict a ->
           sr {syncResponseConflicts = M.insert i a $ syncResponseConflicts sr}

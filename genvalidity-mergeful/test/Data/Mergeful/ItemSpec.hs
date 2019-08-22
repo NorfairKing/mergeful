@@ -66,7 +66,7 @@ spec = do
           let (resp, store2) = processServerItemSync @Int store1 req
           let time = initialServerTime
           store2 `shouldBe` ServerFull (Timed i time)
-          resp `shouldBe` ItemSyncResponseSuccesfullyAdded time
+          resp `shouldBe` ItemSyncResponseClientAdded time
       it "changes the item that the client tells the server to change" $
         forAllValid $ \i ->
           forAllValid $ \j ->
@@ -76,7 +76,7 @@ spec = do
               let (resp, store2) = processServerItemSync @Int store1 req
               let time = incrementServerTime st
               store2 `shouldBe` ServerFull (Timed j time)
-              resp `shouldBe` ItemSyncResponseSuccesfullyChanged time
+              resp `shouldBe` ItemSyncResponseClientChanged time
       it "deletes the item that the client tells the server to delete" $
         forAllValid $ \i ->
           forAllValid $ \st -> do
@@ -84,7 +84,7 @@ spec = do
                 req = ItemSyncRequestDeletedLocally st
             let (resp, store2) = processServerItemSync @Int store1 req
             store2 `shouldBe` ServerEmpty
-            resp `shouldBe` ItemSyncResponseSuccesfullyDeleted
+            resp `shouldBe` ItemSyncResponseClientDeleted
     describe "Server changes" $ do
       it "tells the client that there is a new item at the server side" $ do
         forAllValid $ \i ->
@@ -93,7 +93,7 @@ spec = do
                 req = ItemSyncRequestPoll
             let (resp, store2) = processServerItemSync @Int store1 req
             store2 `shouldBe` store1
-            resp `shouldBe` ItemSyncResponseNewAtServer (Timed i st)
+            resp `shouldBe` ItemSyncResponseServerAdded (Timed i st)
       it "tells the client that there is a modified item at the server side" $ do
         forAllValid $ \i ->
           forAllSubsequent $ \(st, st') -> do
@@ -101,14 +101,14 @@ spec = do
                 req = ItemSyncRequestKnown st
             let (resp, store2) = processServerItemSync @Int store1 req
             store2 `shouldBe` store1
-            resp `shouldBe` ItemSyncResponseModifiedAtServer (Timed i st')
+            resp `shouldBe` ItemSyncResponseServerChanged (Timed i st')
       it "tells the client that there is a deleted item at the server side" $ do
         forAllValid $ \st -> do
           let store1 = ServerEmpty
               req = ItemSyncRequestKnown st
           let (resp, store2) = processServerItemSync @Int store1 req
           store2 `shouldBe` store1
-          resp `shouldBe` ItemSyncResponseDeletedAtServer
+          resp `shouldBe` ItemSyncResponseServerDeleted
     describe "Conflicts" $ do
       it "notices a conflict if the client and server are trying to sync different items" $
         forAllValid $ \i ->
@@ -146,7 +146,7 @@ spec = do
             (resp1, sstore2) = processServerItemSync sstore1 req1
             cstore2 = mergeItemSyncResponseIgnoreProblems cstore1 resp1
         let time = initialServerTime
-        resp1 `shouldBe` ItemSyncResponseSuccesfullyAdded time
+        resp1 `shouldBe` ItemSyncResponseClientAdded time
         sstore2 `shouldBe` ServerFull (Timed i time)
         cstore2 `shouldBe` ClientItemSynced (Timed i time)
     it "succesfully syncs an addition across to a second client" $
@@ -161,7 +161,7 @@ spec = do
         -- The server processes sync request 1
         let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
         let time = initialServerTime
-        resp1 `shouldBe` ItemSyncResponseSuccesfullyAdded time
+        resp1 `shouldBe` ItemSyncResponseClientAdded time
         sstore2 `shouldBe` ServerFull (Timed i time)
         -- Client A merges the response
         let cAstore2 = mergeItemSyncResponseIgnoreProblems cAstore1 resp1
@@ -170,7 +170,7 @@ spec = do
         let req2 = makeItemSyncRequest cBstore1
         -- The server processes sync request 2
         let (resp2, sstore3) = processServerItemSync sstore2 req2
-        resp2 `shouldBe` ItemSyncResponseNewAtServer (Timed i time)
+        resp2 `shouldBe` ItemSyncResponseServerAdded (Timed i time)
         sstore3 `shouldBe` ServerFull (Timed i time)
         -- Client B merges the response
         let cBstore2 = mergeItemSyncResponseIgnoreProblems cBstore1 resp2
@@ -191,7 +191,7 @@ spec = do
             -- The server processes sync request 1
             let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
             let time2 = incrementServerTime time1
-            resp1 `shouldBe` ItemSyncResponseSuccesfullyChanged time2
+            resp1 `shouldBe` ItemSyncResponseClientChanged time2
             sstore2 `shouldBe` ServerFull (Timed j time2)
             -- Client B merges the response
             let cBstore2 = mergeItemSyncResponseIgnoreProblems cBstore1 resp1
@@ -200,7 +200,7 @@ spec = do
             let req2 = makeItemSyncRequest cAstore1
             -- The server processes sync request 2
             let (resp2, sstore3) = processServerItemSync sstore2 req2
-            resp2 `shouldBe` ItemSyncResponseModifiedAtServer (Timed j time2)
+            resp2 `shouldBe` ItemSyncResponseServerChanged (Timed j time2)
             sstore3 `shouldBe` ServerFull (Timed j time2)
             -- Client A merges the response
             let cAstore2 = mergeItemSyncResponseIgnoreProblems cAstore1 resp2
@@ -219,7 +219,7 @@ spec = do
           let req1 = makeItemSyncRequest cBstore1
           -- The server processes sync request 1
           let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
-          resp1 `shouldBe` ItemSyncResponseSuccesfullyDeleted
+          resp1 `shouldBe` ItemSyncResponseClientDeleted
           sstore2 `shouldBe` ServerEmpty
           -- Client B merges the response
           let cBstore2 = mergeItemSyncResponseIgnoreProblems cBstore1 resp1
@@ -228,7 +228,7 @@ spec = do
           let req2 = makeItemSyncRequest cAstore1
           -- The server processes sync request 2
           let (resp2, sstore3) = processServerItemSync sstore2 req2
-          resp2 `shouldBe` ItemSyncResponseDeletedAtServer
+          resp2 `shouldBe` ItemSyncResponseServerDeleted
           sstore3 `shouldBe` ServerEmpty
           -- Client A merges the response
           let cAstore2 = mergeItemSyncResponseIgnoreProblems cAstore1 resp2
@@ -247,7 +247,7 @@ spec = do
           let req1 = makeItemSyncRequest cAstore1
           -- The server processes sync request 1
           let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
-          resp1 `shouldBe` ItemSyncResponseSuccesfullyDeleted
+          resp1 `shouldBe` ItemSyncResponseClientDeleted
           sstore2 `shouldBe` ServerEmpty
           -- Client A merges the response
           let cAstore2 = mergeItemSyncResponseIgnoreProblems cAstore1 resp1
@@ -256,7 +256,7 @@ spec = do
           let req2 = makeItemSyncRequest cBstore1
           -- The server processes sync request 2
           let (resp2, sstore3) = processServerItemSync sstore2 req2
-          resp2 `shouldBe` ItemSyncResponseSuccesfullyDeleted
+          resp2 `shouldBe` ItemSyncResponseClientDeleted
           sstore3 `shouldBe` ServerEmpty
           -- Client B merges the response
           let cBstore2 = mergeItemSyncResponseIgnoreProblems cBstore1 resp2

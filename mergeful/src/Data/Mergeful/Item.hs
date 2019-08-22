@@ -199,27 +199,27 @@ data ItemSyncResponse a
   -- | The client added an item and server has succesfully been made aware of that.
   --
   -- The client needs to update its server time
-  | ItemSyncResponseSuccesfullyAdded !ServerTime
+  | ItemSyncResponseClientAdded !ServerTime
   -- | The client changed an item and server has succesfully been made aware of that.
   --
   -- The client needs to update its server time
-  | ItemSyncResponseSuccesfullyChanged !ServerTime
+  | ItemSyncResponseClientChanged !ServerTime
   -- | The client deleted an item and server has succesfully been made aware of that.
   --
   -- Nothing needs to be done at the client side.
-  | ItemSyncResponseSuccesfullyDeleted
+  | ItemSyncResponseClientDeleted
   -- | This item has been added on the server side
   --
   -- The client should add it too.
-  | ItemSyncResponseNewAtServer !(Timed a)
+  | ItemSyncResponseServerAdded !(Timed a)
   -- | This item has been modified on the server side.
   --
   -- The client should modify it too.
-  | ItemSyncResponseModifiedAtServer !(Timed a)
+  | ItemSyncResponseServerChanged !(Timed a)
   -- | The item was deleted on the server side
   --
   -- The client should delete it too.
-  | ItemSyncResponseDeletedAtServer
+  | ItemSyncResponseServerDeleted
   -- | A conflict occurred.
   --
   -- The server and the client both have an item, but it is different.
@@ -249,13 +249,13 @@ instance FromJSON a => FromJSON (ItemSyncResponse a) where
       case typ :: String of
         "in-sync-empty" -> pure ItemSyncResponseInSyncEmpty
         "in-sync-full" -> pure ItemSyncResponseInSyncFull
-        "client-added" -> ItemSyncResponseSuccesfullyAdded <$> o .: "time"
-        "client-changed" -> ItemSyncResponseSuccesfullyChanged <$> o .: "time"
-        "client-deleted" -> pure ItemSyncResponseSuccesfullyDeleted
-        "server-added" -> ItemSyncResponseNewAtServer <$> (Timed <$> o .: "value" <*> o .: "time")
+        "client-added" -> ItemSyncResponseClientAdded <$> o .: "time"
+        "client-changed" -> ItemSyncResponseClientChanged <$> o .: "time"
+        "client-deleted" -> pure ItemSyncResponseClientDeleted
+        "server-added" -> ItemSyncResponseServerAdded <$> (Timed <$> o .: "value" <*> o .: "time")
         "server-changed" ->
-          ItemSyncResponseModifiedAtServer <$> (Timed <$> o .: "value" <*> o .: "time")
-        "server-deleted" -> pure ItemSyncResponseDeletedAtServer
+          ItemSyncResponseServerChanged <$> (Timed <$> o .: "value" <*> o .: "time")
+        "server-deleted" -> pure ItemSyncResponseServerDeleted
         "conflict" -> ItemSyncResponseConflict <$> o .: "value"
         "conflict-client-deleted" -> ItemSyncResponseConflictClientDeleted <$> o .: "value"
         "conflict-server-deleted" -> pure ItemSyncResponseConflictServerDeleted
@@ -269,14 +269,14 @@ instance ToJSON a => ToJSON (ItemSyncResponse a) where
      in case isr of
           ItemSyncResponseInSyncEmpty -> oe "in-sync-empty"
           ItemSyncResponseInSyncFull -> oe "in-sync-full"
-          ItemSyncResponseSuccesfullyAdded t -> o "client-added" ["time" .= t]
-          ItemSyncResponseSuccesfullyChanged t -> o "client-changed" ["time" .= t]
-          ItemSyncResponseSuccesfullyDeleted -> oe "client-deleted"
-          ItemSyncResponseNewAtServer Timed {..} ->
+          ItemSyncResponseClientAdded t -> o "client-added" ["time" .= t]
+          ItemSyncResponseClientChanged t -> o "client-changed" ["time" .= t]
+          ItemSyncResponseClientDeleted -> oe "client-deleted"
+          ItemSyncResponseServerAdded Timed {..} ->
             o "server-added" ["value" .= timedValue, "time" .= timedTime]
-          ItemSyncResponseModifiedAtServer Timed {..} ->
+          ItemSyncResponseServerChanged Timed {..} ->
             o "server-changed" ["value" .= timedValue, "time" .= timedTime]
-          ItemSyncResponseDeletedAtServer -> oe "server-deleted"
+          ItemSyncResponseServerDeleted -> oe "server-deleted"
           ItemSyncResponseConflict a -> o "conflict" ["value" .= a]
           ItemSyncResponseConflictClientDeleted a -> o "conflict-client-deleted" ["value" .= a]
           ItemSyncResponseConflictServerDeleted -> oe "conflict-server-deleted"
@@ -320,30 +320,29 @@ mergeItemSyncResponseRaw cs sr =
     ClientEmpty ->
       case sr of
         ItemSyncResponseInSyncEmpty -> MergeSuccess cs
-        ItemSyncResponseNewAtServer t -> MergeSuccess $ ClientItemSynced t
+        ItemSyncResponseServerAdded t -> MergeSuccess $ ClientItemSynced t
         _ -> MergeMismatch
     ClientAdded ci ->
       case sr of
-        ItemSyncResponseSuccesfullyAdded st ->
+        ItemSyncResponseClientAdded st ->
           MergeSuccess $ ClientItemSynced $ Timed {timedValue = ci, timedTime = st}
         ItemSyncResponseConflict si -> MergeConflict ci si
         _ -> MergeMismatch
     ClientItemSynced t ->
       case sr of
         ItemSyncResponseInSyncFull -> MergeSuccess $ ClientItemSynced t
-        ItemSyncResponseModifiedAtServer st -> MergeSuccess $ ClientItemSynced st
-        ItemSyncResponseDeletedAtServer -> MergeSuccess ClientEmpty
+        ItemSyncResponseServerChanged st -> MergeSuccess $ ClientItemSynced st
+        ItemSyncResponseServerDeleted -> MergeSuccess ClientEmpty
         _ -> MergeMismatch
     ClientItemSyncedButChanged ct ->
       case sr of
-        ItemSyncResponseSuccesfullyChanged st ->
-          MergeSuccess $ ClientItemSynced $ ct {timedTime = st}
+        ItemSyncResponseClientChanged st -> MergeSuccess $ ClientItemSynced $ ct {timedTime = st}
         ItemSyncResponseConflict si -> MergeConflict (timedValue ct) si
         ItemSyncResponseConflictServerDeleted -> MergeConflictServerDeleted (timedValue ct)
         _ -> MergeMismatch
     ClientDeleted _ ->
       case sr of
-        ItemSyncResponseSuccesfullyDeleted -> MergeSuccess ClientEmpty
+        ItemSyncResponseClientDeleted -> MergeSuccess ClientEmpty
         ItemSyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
         _ -> MergeMismatch
 
@@ -368,8 +367,7 @@ processServerItemSync store sr =
        in case sr of
             ItemSyncRequestPoll -> (ItemSyncResponseInSyncEmpty, store)
             ItemSyncRequestNew ci ->
-              ( ItemSyncResponseSuccesfullyAdded t
-              , ServerFull $ Timed {timedValue = ci, timedTime = t})
+              (ItemSyncResponseClientAdded t, ServerFull $ Timed {timedValue = ci, timedTime = t})
             ItemSyncRequestKnown _
              -- This indicates that the server synced with another client and was told to
              -- delete its item.
@@ -377,7 +375,7 @@ processServerItemSync store sr =
              -- Given that the client indicates that it did not change anything locally,
              -- the server will just instruct the client to delete its item too.
              -- No conflict here.
-             -> (ItemSyncResponseDeletedAtServer, store)
+             -> (ItemSyncResponseServerDeleted, store)
             ItemSyncRequestKnownButChanged _
              -- This indicates that the server synced with another client and was told to
              -- delete its item.
@@ -392,7 +390,7 @@ processServerItemSync store sr =
              --
              -- That's fine, it will just remain deleted.
              -- No conflict here
-             -> (ItemSyncResponseSuccesfullyDeleted, store)
+             -> (ItemSyncResponseClientDeleted, store)
     ServerFull (Timed si st) ->
       let t = incrementServerTime st
        in case sr of
@@ -400,7 +398,7 @@ processServerItemSync store sr =
               -- The client is empty but the server is not.
               -- This means that the server has synced with another client before,
               -- so we can just send the item to the client.
-             -> (ItemSyncResponseNewAtServer (Timed {timedValue = si, timedTime = st}), store)
+             -> (ItemSyncResponseServerAdded (Timed {timedValue = si, timedTime = st}), store)
             ItemSyncRequestNew _
               -- The client has a newly added item, so it thought it was empty before that,
               -- but the server has already synced with another client before.
@@ -421,14 +419,14 @@ processServerItemSync store sr =
                 -- Since the client indicates that the item was not modified at their side,
                 -- we can just send it back to the client to have them update their version.
                 -- No conflict here.
-                else ( ItemSyncResponseModifiedAtServer (Timed {timedValue = si, timedTime = st})
+                else ( ItemSyncResponseServerChanged (Timed {timedValue = si, timedTime = st})
                      , store)
             ItemSyncRequestKnownButChanged (Timed {timedValue = ci, timedTime = ct}) ->
               if ct >= st
                 -- The client time is equal to the server time.
                 -- The client indicates that the item *was* modified at their side.
                 -- This means that the server needs to be updated.
-                then ( ItemSyncResponseSuccesfullyChanged t
+                then ( ItemSyncResponseClientChanged t
                      , ServerFull (Timed {timedValue = ci, timedTime = t}))
                 -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
@@ -440,7 +438,7 @@ processServerItemSync store sr =
                 -- The client time is equal to the server time.
                 -- The client indicates that the item was deleted on their side.
                 -- This means that the server item needs to be deleted as well.
-                then (ItemSyncResponseSuccesfullyDeleted, ServerEmpty)
+                then (ItemSyncResponseClientDeleted, ServerEmpty)
                 -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item was deleted at their side,
