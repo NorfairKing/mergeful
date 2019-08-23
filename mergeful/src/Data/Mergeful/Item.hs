@@ -19,14 +19,7 @@
 --
 -- = A client should operate as follows:
 --
--- == For the first sychronisation
---
--- * The client creates an initial 'ClientItem' using 'initialClientItem'.
--- * The client creates a first 'ItemSyncRequest' using that value or using 'initialItemSyncRequest'.
--- * The server responds with an 'ItemSyncResponse'
--- * The client uses 'mergeItemSyncResponseIgnoreProblems' to produce a new 'ClientItem' to continue with.
---
--- == For any following synchronisation:
+-- The clients starts with an 'initialClientItem'.
 --
 -- * The client produces a 'ItemSyncRequest' with 'makeItemSyncRequest'.
 -- * The client sends that request to the central server and gets a 'ItemSyncResponse'.
@@ -34,6 +27,8 @@
 --
 --
 -- = The central server should operate as follows:
+--
+-- The server starts with an 'initialServerItem'.
 --
 -- * The server accepts a 'ItemSyncRequest'.
 -- * The server performs operations according to the functionality of 'processServerItemSync'.

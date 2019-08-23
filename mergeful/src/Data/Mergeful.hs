@@ -16,14 +16,7 @@
 --
 -- = A client should operate as follows:
 --
--- == For the first sychronisation
---
--- * The client creates an initial 'ClientStore' using 'initialClientStore'.
--- * The client creates a first 'SyncRequest' using that value or using 'initialSyncRequest'.
--- * The server responds with a 'SyncResponse'
--- * The client uses 'mergeSyncResponseIgnoreProblems' to produce a new 'ClientStore' to continue with.
---
--- == For any following synchronisation:
+-- The client starts with an 'initialClientStore'.
 --
 -- * The client produces a 'SyncRequest' with 'makeSyncRequest'.
 -- * The client sends that request to the central server and gets a 'SyncResponse'.
@@ -31,6 +24,8 @@
 --
 --
 -- = The central server should operate as follows:
+--
+-- The server starts with an 'initialServerStore'.
 --
 -- * The server accepts a 'SyncRequest'.
 -- * The server performs operations according to the functionality of 'processServerSync'.
