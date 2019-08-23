@@ -13,41 +13,52 @@
 -- * Each client synchronises with the central server, but never with eachother
 --
 --
--- A central server should operate as follows:
+--
+-- = A client should operate as follows:
+--
+-- == For the first sychronisation
+--
+-- * The client creates an initial 'ClientStore' using 'initialClientStore'.
+-- * The client creates a first 'SyncRequest' using that value or using 'initialSyncRequest'.
+-- * The server responds with a 'SyncResponse'
+-- * The client uses 'mergeSyncResponseIgnoreProblems' to produce a new 'ClientStore' to continue with.
+--
+-- == For any following synchronisation:
+--
+-- * The client produces a 'SyncRequest' with 'makeSyncRequest'.
+-- * The client sends that request to the central server and gets a 'SyncResponse'.
+-- * The client then updates its local store with 'mergeSyncResponseIgnoreProblems'.
+--
+--
+-- = The central server should operate as follows:
 --
 -- * The server accepts a 'SyncRequest'.
 -- * The server performs operations according to the functionality of 'processServerSync'.
 -- * The server respons with a 'SyncResponse'.
 --
 --
--- A client should operate as follows:
---
--- * The client produces a 'SyncRequest' with 'makeSyncRequest'.
--- * The client sends that request to the central server and gets a 'SyncResponse'.
--- * The client then updates its local store with 'mergeSyncResponseIgnoreProblems'.
---
 -- WARNING:
 -- This whole approach can break down if a server resets its server times
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful
-  ( ClientStore(..)
-  , emptyClientStore
-  , SyncRequest(..)
+  ( initialClientStore
+  , initialSyncRequest
   , makeSyncRequest
+  , mergeSyncResponseIgnoreProblems
+  -- * Server side
+  , initialServerStore
+  , processServerSync
+  -- * Types, for reference
+  , ClientStore(..)
+  , SyncRequest(..)
   , SyncResponse(..)
   , emptySyncResponse
-  , mergeSyncResponseIgnoreProblems
+  , ServerStore(..)
+  -- * Utility functions for implementing client-side merging
   , addedItemsIntmap
   , mergeAddedItems
   , mergeSyncedButChangedItems
   , mergeDeletedItems
-  , ServerStore(..)
-  , emptyServerStore
-  , processServerSync
-  , Timed(..)
-  , ServerTime
-  , initialServerTime
-  , incrementServerTime
   ) where
 
 import GHC.Generics (Generic)
@@ -65,8 +76,8 @@ import Data.These
 import Data.Validity
 import Data.Validity.Containers ()
 
-import Data.Mergeful.Timed
 import Data.Mergeful.Item
+import Data.Mergeful.Timed
 
 data ClientStore i a =
   ClientStore
@@ -107,8 +118,11 @@ instance (ToJSONKey i, ToJSON a) => ToJSON (ClientStore i a) where
     , jNull "deleted" clientStoreDeletedItems
     ]
 
-emptyClientStore :: ClientStore i a
-emptyClientStore =
+-- | A client store to start with.
+--
+-- This store contains no items.
+initialClientStore :: ClientStore i a
+initialClientStore =
   ClientStore
     { clientStoreAddedItems = []
     , clientStoreSyncedItems = M.empty
@@ -124,8 +138,11 @@ newtype ServerStore i a =
 
 instance (Validity i, Ord i, Validity a) => Validity (ServerStore i a)
 
-emptyServerStore :: ServerStore i a
-emptyServerStore = ServerStore {serverStoreItems = M.empty}
+-- | A server store to start with
+--
+-- This store contains no items.
+initialServerStore :: ServerStore i a
+initialServerStore = ServerStore {serverStoreItems = M.empty}
 
 data SyncRequest i a =
   SyncRequest
@@ -165,6 +182,18 @@ instance (ToJSONKey i, ToJSON a) => ToJSON (SyncRequest i a) where
     , jNull "changed" syncRequestKnownButChangedItems
     , jNull "deleted" syncRequestDeletedItems
     ]
+
+-- | An intial 'SyncRequest' to start with.
+--
+-- It just asks the server to send over whatever it knows.
+initialSyncRequest :: SyncRequest i a
+initialSyncRequest =
+  SyncRequest
+    { syncRequestNewItems = M.empty
+    , syncRequestKnownItems = M.empty
+    , syncRequestKnownButChangedItems = M.empty
+    , syncRequestDeletedItems = M.empty
+    }
 
 data SyncResponse i a =
   SyncResponse
@@ -246,6 +275,9 @@ jNull n s =
     then Nothing
     else Just $ n .= s
 
+-- | Produce an 'SyncRequest' from a 'ClientStore'.
+--
+-- Send this to the server for synchronisation.
 makeSyncRequest :: ClientStore i a -> SyncRequest i a
 makeSyncRequest ClientStore {..} =
   SyncRequest
@@ -255,6 +287,11 @@ makeSyncRequest ClientStore {..} =
     , syncRequestDeletedItems = clientStoreDeletedItems
     }
 
+-- | Merge an 'SyncResponse' into the current 'ClientStore'.
+--
+-- This function ignores any problems that may occur.
+-- In the case of a conclict, it will just not update the client item.
+-- The next sync request will then produce a conflict again.
 mergeSyncResponseIgnoreProblems :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
@@ -348,7 +385,7 @@ addToSyncResponse sr cid isr =
                 S.insert i $ syncResponseConflictsServerDeleted sr
             }
 
--- | Process a sync request from the server
+-- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
 processServerSync ::
      forall i a m. (Ord i, Monad m)
   => m i -- ^ The action that is guaranteed to generate unique identifiers

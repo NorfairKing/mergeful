@@ -21,7 +21,7 @@
 --
 -- == For the first sychronisation
 --
--- * The client creates an initial client item using 'initialClientItem'.
+-- * The client creates an initial 'ClientItem' using 'initialClientItem'.
 -- * The client creates a first 'ItemSyncRequest' using that value or using 'initialItemSyncRequest'.
 -- * The server responds with an 'ItemSyncResponse'
 -- * The client uses 'mergeItemSyncResponseIgnoreProblems' to produce a new 'ClientItem' to continue with.
