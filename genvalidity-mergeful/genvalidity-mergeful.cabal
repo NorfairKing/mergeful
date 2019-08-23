@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: fb5df4fc8f6ef1515fc26185e2475b4aa0657b5b98cc335426823f5b05d8faa7
+-- hash: 7ce78e6563a0edf1d678458abc049e255d0f346e08fd9a349a4258802f48d53e
 
 name:           genvalidity-mergeful
 version:        0.0.0.0
@@ -29,6 +29,8 @@ library
   exposed-modules:
       Data.GenValidity.Mergeful
       Data.GenValidity.Mergeful.Item
+      Data.GenValidity.Mergeful.Timed
+      Data.GenValidity.Mergeful.Value
   other-modules:
       Paths_genvalidity_mergeful
   hs-source-dirs:
