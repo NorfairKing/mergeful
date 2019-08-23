@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7ce78e6563a0edf1d678458abc049e255d0f346e08fd9a349a4258802f48d53e
+-- hash: 1e3b35a31c52b95f06f87b4d6459129e6b8ff18457f03ecb98b8e1ce713bec0f
 
 name:           genvalidity-mergeful
 version:        0.0.0.0
@@ -50,6 +50,8 @@ test-suite mergeful-test
   main-is: Spec.hs
   other-modules:
       Data.Mergeful.ItemSpec
+      Data.Mergeful.TimedSpec
+      Data.Mergeful.ValueSpec
       Data.MergefulSpec
       Paths_genvalidity_mergeful
   hs-source-dirs:

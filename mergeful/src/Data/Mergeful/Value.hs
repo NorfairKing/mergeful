@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
--- | A way to synchronise a single item with safe merge conflicts.
+-- | A way to synchronise a single value with safe merge conflicts.
 --
 -- The setup is as follows:
 --
@@ -12,39 +12,47 @@
 -- * Each client synchronises with the central server, but never with eachother
 --
 --
--- A central server should operate as follows:
 --
+-- = A client should operate as follows:
+--
+-- == For the first sychronisation
+--
+-- The client should ask the server for the current server value.
+-- The server should send over a 'Timed' vaule, and the client should create its 'ClientValue' with 'initialClientValue'.
+--
+-- == For any following synchronisation:
+--
+--   * The client produces a 'ValueSyncRequest' with 'makeValueSyncRequest'.
+--   * The client sends that request to the central server and gets a 'ValueSyncResponse'.
+--   * The client then updates its local store with 'mergeValueSyncResponseRaw' or 'mergeValueSyncResponseIgnoreProblems'.
+--
+--
+-- = The central server should operate as follows:
+--
+-- * The server should create an initial 'ServerValue' using 'initialServerValue'.
 -- * The server accepts a 'ValueSyncRequest'.
 -- * The server performs operations according to the functionality of 'processServerValueSync'.
 -- * The server respons with a 'ValueSyncResponse'.
---
---
--- A client should operate as follows:
---
--- * The client produces a 'ValueSyncRequest' with 'makeValueSyncRequest'.
--- * The client sends that request to the central server and gets a 'ValueSyncResponse'.
--- * The client then updates its local store with 'mergeValueSyncResponseRaw' or 'mergeValueSyncResponseIgnoreProblems'.
 --
 --
 -- WARNING:
 -- This whole approach can break down if a server resets its server times
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful.Value
-  ( ClientValue(..)
-  , ValueSyncRequest(..)
+  ( initialClientValue
   , makeValueSyncRequest
-  , ValueSyncResponse(..)
-  , MergeResult(..)
   , mergeValueSyncResponseRaw
+  , ValueMergeResult(..)
   , mergeValueSyncResponseIgnoreProblems
   , ignoreMergeProblems
-  , ServerTime
-  , initialServerTime
-  , incrementServerTime
-  , ServerValue(..)
+    -- * Server side
   , initialServerValue
   , processServerValueSync
-  , Timed(..)
+    -- * Types, for reference
+  , ClientValue(..)
+  , ValueSyncRequest(..)
+  , ValueSyncResponse(..)
+  , ServerValue(..)
   ) where
 
 import GHC.Generics (Generic)
@@ -54,6 +62,11 @@ import Data.Validity
 
 import Data.Mergeful.Timed
 
+-- | The client side value.
+--
+-- The only differences between `a` and 'ClientValue a' are that
+-- 'ClientValue a' also remembers the last synchronisation time from
+-- the server, and whether the item has been modified at the client
 data ClientValue a
   -- | There is a value and it has been synced with the server.
   = ClientValueSynced !(Timed a)
@@ -75,12 +88,20 @@ instance FromJSON a => FromJSON (ClientValue a) where
 instance ToJSON a => ToJSON (ClientValue a) where
   toJSON ci =
     object $
-    case ci of
-      ClientValueSynced Timed {..} ->
-        ["type" .= ("synced" :: String), "value" .= timedValue, "time" .= timedTime]
-      ClientValueSyncedButChanged Timed {..} ->
-        ["type" .= ("changed" :: String), "value" .= timedValue, "time" .= timedTime]
+    let o s rest = ("type" .= (s :: String)) : rest
+     in case ci of
+          ClientValueSynced Timed {..} -> o "synced" ["value" .= timedValue, "time" .= timedTime]
+          ClientValueSyncedButChanged Timed {..} ->
+            o "changed" ["value" .= timedValue, "time" .= timedTime]
 
+-- | Produce a client value based on an initial synchronisation request
+initialClientValue :: Timed a -> ClientValue a
+initialClientValue t = ClientValueSynced t
+
+-- | The server-side value.
+--
+-- The only difference between 'a' and 'ServerValue a' is that 'ServerValue a' also
+-- remembers the last time this value was changed during synchronisation.
 data ServerValue a =
   ServerValue !(Timed a)
   deriving (Show, Eq, Generic)
@@ -94,6 +115,9 @@ instance FromJSON a => FromJSON (ServerValue a) where
 instance ToJSON a => ToJSON (ServerValue a) where
   toJSON (ServerValue Timed {..}) = object ["value" .= timedValue, "time" .= timedTime]
 
+-- | Initialise a server value.
+--
+-- Note that the server has to start with a value, the value 'a' cannot be omitted.
 initialServerValue :: a -> ServerValue a
 initialServerValue a = ServerValue $ Timed {timedValue = a, timedTime = initialServerTime}
 
@@ -129,18 +153,18 @@ data ValueSyncResponse a
   -- | The client and server are fully in sync.
   --
   -- Nothing needs to be done at the client side.
-  = ValueSyncResponseInSyncFull
-  -- | The client changed an item and server has succesfully been made aware of that.
+  = ValueSyncResponseInSync
+  -- | The client changed the value and server has succesfully been made aware of that.
   --
   -- The client needs to update its server time
   | ValueSyncResponseClientChanged !ServerTime
-  -- | This item has been modified on the server side.
+  -- | This value has been changed on the server side.
   --
-  -- The client should modify it too.
+  -- The client should change it too.
   | ValueSyncResponseServerChanged !(Timed a)
   -- | A conflict occurred.
   --
-  -- The server and the client both have an item, but it is different.
+  -- The server and the client both changed the value in a conflicting manner.
   -- The server kept its part, the client can either take whatever the server gave them
   -- or deal with the conflict somehow, and then try to re-sync.
   | ValueSyncResponseConflict !a -- ^ The item at the server side
@@ -153,7 +177,7 @@ instance FromJSON a => FromJSON (ValueSyncResponse a) where
     withObject "ValueSyncResponse" $ \o -> do
       typ <- o .: "type"
       case typ :: String of
-        "in-sync-full" -> pure ValueSyncResponseInSyncFull
+        "in-sync" -> pure ValueSyncResponseInSync
         "client-changed" -> ValueSyncResponseClientChanged <$> o .: "time"
         "server-changed" ->
           ValueSyncResponseServerChanged <$> (Timed <$> o .: "value" <*> o .: "time")
@@ -166,37 +190,47 @@ instance ToJSON a => ToJSON (ValueSyncResponse a) where
     let o s rest = ("type" .= (s :: String)) : rest
         oe s = o s []
      in case isr of
-          ValueSyncResponseInSyncFull -> oe "in-sync-full"
+          ValueSyncResponseInSync -> oe "in-sync"
           ValueSyncResponseClientChanged t -> o "client-changed" ["time" .= t]
           ValueSyncResponseServerChanged Timed {..} ->
             o "server-changed" ["value" .= timedValue, "time" .= timedTime]
           ValueSyncResponseConflict a -> o "conflict" ["value" .= a]
 
+-- | Produce an 'ItemSyncRequest' from a 'ClientItem'.
+--
+-- Send this to the server for synchronisation.
 makeValueSyncRequest :: ClientValue a -> ValueSyncRequest a
 makeValueSyncRequest cs =
   case cs of
     ClientValueSynced t -> ValueSyncRequestKnown (timedTime t)
     ClientValueSyncedButChanged t -> ValueSyncRequestKnownButChanged t
 
-data MergeResult a
+data ValueMergeResult a
   -- | The merger went succesfully, no conflicts or desyncs
   = MergeSuccess !(ClientValue a)
   -- | There was a merge conflict. The server and client had different, conflicting versions.
   | MergeConflict
       !a -- ^ The item at the client side
       !a -- ^ The item at the server side
-  -- | The server responded with a response that did not make sense given the client's request.
   | MergeMismatch
+  -- ^ The server responded with a response that did not make sense given the client's request.
+  --
+  -- This should not happen in practice.
   deriving (Show, Eq, Generic)
 
-instance Validity a => Validity (MergeResult a)
+instance Validity a => Validity (ValueMergeResult a)
 
-mergeValueSyncResponseRaw :: ClientValue a -> ValueSyncResponse a -> MergeResult a
+-- | Merge an 'ValueSyncResponse' into the current 'ClientValue'.
+--
+-- This function will not make any decisions about what to do with
+-- conflicts or mismatches between the request and the response.
+-- It only produces a 'ValueMergeResult' so you can decide what to do with it.
+mergeValueSyncResponseRaw :: ClientValue a -> ValueSyncResponse a -> ValueMergeResult a
 mergeValueSyncResponseRaw cs sr =
   case cs of
     ClientValueSynced t ->
       case sr of
-        ValueSyncResponseInSyncFull -> MergeSuccess $ ClientValueSynced t
+        ValueSyncResponseInSync -> MergeSuccess $ ClientValueSynced t
         ValueSyncResponseServerChanged st -> MergeSuccess $ ClientValueSynced st
         _ -> MergeMismatch
     ClientValueSyncedButChanged ct ->
@@ -205,16 +239,27 @@ mergeValueSyncResponseRaw cs sr =
         ValueSyncResponseConflict si -> MergeConflict (timedValue ct) si
         _ -> MergeMismatch
 
+-- | Merge an 'ValueSyncResponse' into the current 'ClientValue'.
+--
+-- This function ignores any problems that may occur.
+-- In the case of a conclict, it will just not update the client item.
+-- The next sync request will then produce a conflict again.
+--
+-- > mergeValueSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeValueSyncResponseRaw cs
 mergeValueSyncResponseIgnoreProblems :: ClientValue a -> ValueSyncResponse a -> ClientValue a
 mergeValueSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeValueSyncResponseRaw cs
 
-ignoreMergeProblems :: ClientValue a -> MergeResult a -> ClientValue a
+-- | Ignore any merge problems in a 'ValueMergeResult'.
+--
+-- This function just returns the original 'ClientValue' if anything other than 'MergeSuccess' occurs.
+ignoreMergeProblems :: ClientValue a -> ValueMergeResult a -> ClientValue a
 ignoreMergeProblems cs mr =
   case mr of
     MergeSuccess cs' -> cs'
     MergeConflict _ _ -> cs
     MergeMismatch -> cs
 
+-- | Serve an 'ValueSyncRequest' using the current 'ServerValue', producing an 'ValueSyncResponse' and a new 'ServerValue'.
 processServerValueSync ::
      ServerValue a -> ValueSyncRequest a -> (ValueSyncResponse a, ServerValue a)
 processServerValueSync sv@(ServerValue (Timed si st)) sr =
@@ -227,7 +272,7 @@ processServerValueSync sv@(ServerValue (Timed si st)) sr =
                 -- This means that the items are in sync.
                 -- (Unless the server somehow modified the item but not its server time,
                 -- which would beconsidered a bug.)
-            then (ValueSyncResponseInSyncFull, sv)
+            then (ValueSyncResponseInSync, sv)
                 -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item was not modified at their side,

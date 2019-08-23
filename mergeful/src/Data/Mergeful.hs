@@ -65,6 +65,7 @@ import Data.These
 import Data.Validity
 import Data.Validity.Containers ()
 
+import Data.Mergeful.Timed
 import Data.Mergeful.Item
 
 data ClientStore i a =
