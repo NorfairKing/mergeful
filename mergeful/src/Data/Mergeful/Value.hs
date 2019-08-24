@@ -78,7 +78,7 @@ instance Validity ChangedFlag
 --
 -- There cannot be an unsynced 'ClientValue'.
 data ClientValue a =
-  ClientValue !(Timed a) ChangedFlag
+  ClientValue !(Timed a) !ChangedFlag
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ClientValue a)
@@ -274,31 +274,31 @@ ignoreMergeProblems cs mr =
 processServerValueSync ::
      ServerValue a -> ValueSyncRequest a -> (ValueSyncResponse a, ServerValue a)
 processServerValueSync sv@(ServerValue (Timed si st)) sr =
-  let t = incrementServerTime st
-   in case sr of
-        ValueSyncRequestKnown ct ->
-          if ct >= st
+  case sr of
+    ValueSyncRequestKnown ct ->
+      if ct >= st
                 -- The client time is equal to the server time.
                 -- The client indicates that the item was not modified at their side.
                 -- This means that the items are in sync.
                 -- (Unless the server somehow modified the item but not its server time,
                 -- which would beconsidered a bug.)
-            then (ValueSyncResponseInSync, sv)
+        then (ValueSyncResponseInSync, sv)
                 -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item was not modified at their side,
                 -- we can just send it back to the client to have them update their version.
                 -- No conflict here.
-            else (ValueSyncResponseServerChanged (Timed {timedValue = si, timedTime = st}), sv)
-        ValueSyncRequestKnownButChanged (Timed {timedValue = ci, timedTime = ct}) ->
-          if ct >= st
+        else (ValueSyncResponseServerChanged (Timed {timedValue = si, timedTime = st}), sv)
+    ValueSyncRequestKnownButChanged (Timed {timedValue = ci, timedTime = ct}) ->
+      if ct >= st
                 -- The client time is equal to the server time.
                 -- The client indicates that the item *was* modified at their side.
                 -- This means that the server needs to be updated.
-            then ( ValueSyncResponseClientChanged t
+        then let t = incrementServerTime st
+              in ( ValueSyncResponseClientChanged t
                  , ServerValue (Timed {timedValue = ci, timedTime = t}))
                 -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item *was* modified at their side,
                 -- there is a conflict.
-            else (ValueSyncResponseConflict si, sv)
+        else (ValueSyncResponseConflict si, sv)
