@@ -49,6 +49,7 @@ module Data.Mergeful.Value
   , initialServerValue
   , processServerValueSync
     -- * Types, for reference
+  , ChangedFlag(..)
   , ClientValue(..)
   , ValueSyncRequest(..)
   , ValueSyncResponse(..)
@@ -62,41 +63,50 @@ import Data.Validity
 
 import Data.Mergeful.Timed
 
+data ChangedFlag
+  = Changed
+  | NotChanged
+  deriving (Show, Eq, Generic)
+
+instance Validity ChangedFlag
+
 -- | The client side value.
 --
 -- The only differences between `a` and 'ClientValue a' are that
 -- 'ClientValue a' also remembers the last synchronisation time from
 -- the server, and whether the item has been modified at the client
-data ClientValue a
-  -- | There is a value and it has been synced with the server.
-  = ClientValueSynced !(Timed a)
-  -- | There is a value and it has been synced with the server, but it has since been modified.
-  | ClientValueSyncedButChanged !(Timed a)
+--
+-- There cannot be an unsynced 'ClientValue'.
+data ClientValue a =
+  ClientValue !(Timed a) ChangedFlag
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ClientValue a)
 
 instance FromJSON a => FromJSON (ClientValue a) where
   parseJSON =
-    withObject "ClientValue" $ \o -> do
-      typ <- o .: "type"
-      case typ :: String of
-        "synced" -> ClientValueSynced <$> (Timed <$> o .: "value" <*> o .: "time")
-        "changed" -> ClientValueSyncedButChanged <$> (Timed <$> o .: "value" <*> o .: "time")
-        _ -> fail "unknown item type"
+    withObject "ClientValue" $ \o ->
+      ClientValue <$> (Timed <$> o .: "value" <*> o .: "time") <*>
+      ((\b ->
+          if b
+            then Changed
+            else NotChanged) <$>
+       o .: "changed")
 
 instance ToJSON a => ToJSON (ClientValue a) where
-  toJSON ci =
-    object $
-    let o s rest = ("type" .= (s :: String)) : rest
-     in case ci of
-          ClientValueSynced Timed {..} -> o "synced" ["value" .= timedValue, "time" .= timedTime]
-          ClientValueSyncedButChanged Timed {..} ->
-            o "changed" ["value" .= timedValue, "time" .= timedTime]
+  toJSON (ClientValue Timed {..} cf) =
+    object
+      [ "value" .= timedValue
+      , "time" .= timedTime
+      , "changed" .=
+        (case cf of
+           Changed -> True
+           NotChanged -> False)
+      ]
 
 -- | Produce a client value based on an initial synchronisation request
 initialClientValue :: Timed a -> ClientValue a
-initialClientValue t = ClientValueSynced t
+initialClientValue t = ClientValue t NotChanged
 
 -- | The server-side value.
 --
@@ -200,10 +210,10 @@ instance ToJSON a => ToJSON (ValueSyncResponse a) where
 --
 -- Send this to the server for synchronisation.
 makeValueSyncRequest :: ClientValue a -> ValueSyncRequest a
-makeValueSyncRequest cs =
-  case cs of
-    ClientValueSynced t -> ValueSyncRequestKnown (timedTime t)
-    ClientValueSyncedButChanged t -> ValueSyncRequestKnownButChanged t
+makeValueSyncRequest (ClientValue t cf) =
+  case cf of
+    NotChanged -> ValueSyncRequestKnown (timedTime t)
+    Changed -> ValueSyncRequestKnownButChanged t
 
 data ValueMergeResult a
   -- | The merger went succesfully, no conflicts or desyncs
@@ -226,16 +236,17 @@ instance Validity a => Validity (ValueMergeResult a)
 -- conflicts or mismatches between the request and the response.
 -- It only produces a 'ValueMergeResult' so you can decide what to do with it.
 mergeValueSyncResponseRaw :: ClientValue a -> ValueSyncResponse a -> ValueMergeResult a
-mergeValueSyncResponseRaw cs sr =
-  case cs of
-    ClientValueSynced t ->
+mergeValueSyncResponseRaw cv@(ClientValue ct cf) sr =
+  case cf of
+    NotChanged ->
       case sr of
-        ValueSyncResponseInSync -> MergeSuccess $ ClientValueSynced t
-        ValueSyncResponseServerChanged st -> MergeSuccess $ ClientValueSynced st
+        ValueSyncResponseInSync -> MergeSuccess cv
+        ValueSyncResponseServerChanged st -> MergeSuccess $ ClientValue st NotChanged
         _ -> MergeMismatch
-    ClientValueSyncedButChanged ct ->
+    Changed ->
       case sr of
-        ValueSyncResponseClientChanged st -> MergeSuccess $ ClientValueSynced $ ct {timedTime = st}
+        ValueSyncResponseClientChanged st ->
+          MergeSuccess $ ClientValue (ct {timedTime = st}) NotChanged
         ValueSyncResponseConflict si -> MergeConflict (timedValue ct) si
         _ -> MergeMismatch
 

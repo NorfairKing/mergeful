@@ -83,9 +83,9 @@ spec = do
       forAllValid $ \time1 ->
         forAllValid $ \i ->
           forAllValid $ \j -> do
-            let cAstore1 = ClientValueSynced (Timed i time1)
+            let cAstore1 = ClientValue (Timed i time1) NotChanged
             -- Client B had synced that same item, but has since modified it
-            let cBstore1 = ClientValueSyncedButChanged (Timed j time1)
+            let cBstore1 = ClientValue (Timed j time1) Changed
             -- The server is has the item that both clients had before
             let sstore1 = ServerValue (Timed i time1)
             -- Client B makes sync request 1
@@ -97,7 +97,7 @@ spec = do
             sstore2 `shouldBe` ServerValue (Timed j time2)
             -- Client B merges the response
             let cBstore2 = mergeValueSyncResponseIgnoreProblems cBstore1 resp1
-            cBstore2 `shouldBe` ClientValueSynced (Timed j time2)
+            cBstore2 `shouldBe` ClientValue (Timed j time2) NotChanged
             -- Client A makes sync request 2
             let req2 = makeValueSyncRequest cAstore1
             -- The server processes sync request 2
@@ -106,7 +106,7 @@ spec = do
             sstore3 `shouldBe` ServerValue (Timed j time2)
             -- Client A merges the response
             let cAstore2 = mergeValueSyncResponseIgnoreProblems cAstore1 resp2
-            cAstore2 `shouldBe` ClientValueSynced (Timed j time2)
+            cAstore2 `shouldBe` ClientValue (Timed j time2) NotChanged
             -- Client A and Client B now have the same store
             cAstore2 `shouldBe` cBstore2
     it "is idempotent with one client" $

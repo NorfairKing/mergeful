@@ -8,6 +8,8 @@ import Data.Mergeful.Value
 
 import Data.GenValidity.Mergeful.Timed ()
 
+instance GenUnchecked ChangedFlag
+instance GenValid ChangedFlag
 instance GenUnchecked a => GenUnchecked (ClientValue a)
 
 instance GenValid a => GenValid (ClientValue a) where
