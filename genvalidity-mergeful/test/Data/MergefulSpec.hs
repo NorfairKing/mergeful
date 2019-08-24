@@ -25,6 +25,7 @@ import Test.Validity.Aeson
 import Data.GenValidity.UUID.Typed ()
 
 import Data.Mergeful
+import Data.Mergeful.Timed
 
 import Data.GenValidity.Mergeful ()
 import Data.GenValidity.Mergeful.Item ()
@@ -79,7 +80,7 @@ spec = do
         it "succesfully downloads everything from the server for an empty client" $
           forAllValid $ \sstore1 ->
             evalDM $ do
-              let cstore1 = emptyClientStore :: ClientStore (UUID Int) Int
+              let cstore1 = initialClientStore :: ClientStore (UUID Int) Int
               let req = makeSyncRequest cstore1
               (resp, sstore2) <- processServerSync genD sstore1 req
               let cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp
@@ -89,8 +90,8 @@ spec = do
         it "succesfully uploads everything to the server for an empty server" $
           forAllValid $ \items ->
             evalDM $ do
-              let cstore1 = emptyClientStore {clientStoreAddedItems = items}
-              let sstore1 = emptyServerStore :: ServerStore (UUID Int) Int
+              let cstore1 = initialClientStore {clientStoreAddedItems = items}
+              let sstore1 = initialServerStore :: ServerStore (UUID Int) Int
               let req = makeSyncRequest cstore1
               (resp, sstore2) <- processServerSync genD sstore1 req
               let cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp
@@ -116,11 +117,11 @@ spec = do
         it "successfully syncs an addition accross to a second client" $
           forAllValid $ \i ->
             evalDM $ do
-              let cAstore1 = emptyClientStore {clientStoreAddedItems = [i]}
+              let cAstore1 = initialClientStore {clientStoreAddedItems = [i]}
               -- Client B is empty
-              let cBstore1 = emptyClientStore :: ClientStore (UUID Int) Int
+              let cBstore1 = initialClientStore :: ClientStore (UUID Int) Int
               -- The server is empty
-              let sstore1 = emptyServerStore
+              let sstore1 = initialServerStore
               -- Client A makes sync request 1
               let req1 = makeSyncRequest cAstore1
               -- The server processes sync request 1
@@ -134,7 +135,7 @@ spec = do
                   lift $ sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
                   -- Client A merges the response
                   let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
-                  lift $ cAstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
+                  lift $ cAstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
                   -- Client B makes sync request 2
                   let req2 = makeSyncRequest cBstore1
                   -- The server processes sync request 2
@@ -144,7 +145,7 @@ spec = do
                     sstore3 `shouldBe` sstore2
                   -- Client B merges the response
                   let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
-                  lift $ cBstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
+                  lift $ cBstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
                   -- Client A and Client B now have the same store
                   lift $ cAstore2 `shouldBe` cBstore2
                 _ -> lift $ expectationFailure "Should have found exactly one added item."
@@ -155,13 +156,13 @@ spec = do
                 forAllValid $ \time1 ->
                   evalDM $ do
                     let cAstore1 =
-                          emptyClientStore
+                          initialClientStore
                             { clientStoreSyncedItems =
                                 M.singleton (uuid :: UUID Int) (Timed (i :: Int) time1)
                             }
                     -- Client B had synced that same item, but has since modified it
                     let cBstore1 =
-                          emptyClientStore
+                          initialClientStore
                             {clientStoreSyncedButChangedItems = M.singleton uuid (Timed j time1)}
                     -- The server is has the item that both clients had before
                     let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i time1)}
@@ -179,7 +180,7 @@ spec = do
                     let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
                     lift $
                       cBstore2 `shouldBe`
-                      emptyClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
+                      initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
                     -- Client A makes sync request 2
                     let req2 = makeSyncRequest cAstore1
                     -- The server processes sync request 2
@@ -193,7 +194,7 @@ spec = do
                     let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
                     lift $
                       cAstore2 `shouldBe`
-                      emptyClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
+                      initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
                     -- Client A and Client B now have the same store
                     lift $ cAstore2 `shouldBe` cBstore2
         it "succesfully syncs a deletion across to a second client" $
@@ -202,13 +203,14 @@ spec = do
               forAllValid $ \i ->
                 evalDM $ do
                   let cAstore1 =
-                        emptyClientStore
+                        initialClientStore
                           { clientStoreSyncedItems =
                               M.singleton (uuid :: UUID Int) (Timed (i :: Int) time1)
                           }
                   -- Client A has a synced item.
                   -- Client B had synced that same item, but has since deleted it.
-                  let cBstore1 = emptyClientStore {clientStoreDeletedItems = M.singleton uuid time1}
+                  let cBstore1 =
+                        initialClientStore {clientStoreDeletedItems = M.singleton uuid time1}
                   -- The server still has the undeleted item
                   let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i time1)}
                   -- Client B makes sync request 1
@@ -218,10 +220,10 @@ spec = do
                   lift $ do
                     resp1 `shouldBe`
                       emptySyncResponse {syncResponseClientDeleted = S.singleton uuid}
-                    sstore2 `shouldBe` emptyServerStore
+                    sstore2 `shouldBe` initialServerStore
                   -- Client B merges the response
                   let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
-                  lift $ cBstore2 `shouldBe` emptyClientStore
+                  lift $ cBstore2 `shouldBe` initialClientStore
                   -- Client A makes sync request 2
                   let req2 = makeSyncRequest cAstore1
                   -- The server processes sync request 2
@@ -232,7 +234,7 @@ spec = do
                     sstore3 `shouldBe` sstore2
                   -- Client A merges the response
                   let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
-                  lift $ cAstore2 `shouldBe` emptyClientStore
+                  lift $ cAstore2 `shouldBe` initialClientStore
                   -- Client A and Client B now have the same store
                   lift $ cAstore2 `shouldBe` cBstore2
         it "does not run into a conflict if two clients both try to sync a deletion" $
@@ -241,10 +243,11 @@ spec = do
               forAllValid $ \i ->
                 evalDM $ do
                   let cAstore1 =
-                        emptyClientStore
+                        initialClientStore
                           {clientStoreDeletedItems = M.singleton (uuid :: UUID Int) time1}
                   -- Both client a and client b delete an item.
-                  let cBstore1 = emptyClientStore {clientStoreDeletedItems = M.singleton uuid time1}
+                  let cBstore1 =
+                        initialClientStore {clientStoreDeletedItems = M.singleton uuid time1}
                   -- The server still has the undeleted item
                   let sstore1 =
                         ServerStore {serverStoreItems = M.singleton uuid (Timed (i :: Int) time1)}
@@ -258,7 +261,7 @@ spec = do
                     sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty}) -- TODO will probably need some sort of tombstoning.
                   -- Client A merges the response
                   let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
-                  lift $ cAstore2 `shouldBe` emptyClientStore
+                  lift $ cAstore2 `shouldBe` initialClientStore
                   -- Client B makes sync request 2
                   let req2 = makeSyncRequest cBstore1
                   -- The server processes sync request 2
@@ -270,18 +273,18 @@ spec = do
                   -- Client B merges the response
                   let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
                   lift $ do
-                    cBstore2 `shouldBe` emptyClientStore
+                    cBstore2 `shouldBe` initialClientStore
                     -- Client A and Client B now have the same store
                     cAstore2 `shouldBe` cBstore2
       describe "Multiple items" $ do
         it "successfully syncs additions accross to a second client" $
           forAllValid $ \is ->
             evalDM $ do
-              let cAstore1 = emptyClientStore {clientStoreAddedItems = is}
+              let cAstore1 = initialClientStore {clientStoreAddedItems = is}
               -- Client B is empty
-              let cBstore1 = emptyClientStore :: ClientStore (UUID Int) Int
+              let cBstore1 = initialClientStore :: ClientStore (UUID Int) Int
               -- The server is empty
-              let sstore1 = emptyServerStore
+              let sstore1 = initialServerStore
               -- Client A makes sync request 1
               let req1 = makeSyncRequest cAstore1
               -- The server processes sync request 1
@@ -293,7 +296,7 @@ spec = do
                 sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
               -- Client A merges the response
               let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
-              lift $ cAstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
+              lift $ cAstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
               -- Client B makes sync request 2
               let req2 = makeSyncRequest cBstore1
               -- The server processes sync request 2
@@ -303,7 +306,7 @@ spec = do
                 sstore3 `shouldBe` sstore2
               -- Client B merges the response
               let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
-              lift $ cBstore2 `shouldBe` (emptyClientStore {clientStoreSyncedItems = items})
+              lift $ cBstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
               -- Client A and Client B now have the same store
               lift $ cAstore2 `shouldBe` cBstore2
         it "succesfully syncs deletions across to a second client" $
@@ -313,10 +316,10 @@ spec = do
                 let syncedItems = M.map (\i -> Timed i time1) (items :: Map (UUID Int) Int)
                     itemTimes = M.map (const time1) items
                     itemIds = M.keysSet items
-                let cAstore1 = emptyClientStore {clientStoreSyncedItems = syncedItems}
+                let cAstore1 = initialClientStore {clientStoreSyncedItems = syncedItems}
                 -- Client A has synced items
                 -- Client B had synced the same items, but has since deleted them.
-                let cBstore1 = emptyClientStore {clientStoreDeletedItems = itemTimes}
+                let cBstore1 = initialClientStore {clientStoreDeletedItems = itemTimes}
                 -- The server still has the undeleted item
                 let sstore1 = ServerStore {serverStoreItems = syncedItems}
                 -- Client B makes sync request 1
@@ -325,10 +328,10 @@ spec = do
                 (resp1, sstore2) <- processServerSync genD sstore1 req1
                 lift $ do
                   resp1 `shouldBe` emptySyncResponse {syncResponseClientDeleted = itemIds}
-                  sstore2 `shouldBe` emptyServerStore
+                  sstore2 `shouldBe` initialServerStore
                 -- Client B merges the response
                 let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp1
-                lift $ cBstore2 `shouldBe` emptyClientStore
+                lift $ cBstore2 `shouldBe` initialClientStore
                 -- Client A makes sync request 2
                 let req2 = makeSyncRequest cAstore1
                 -- The server processes sync request 2
@@ -338,7 +341,7 @@ spec = do
                   sstore3 `shouldBe` sstore2
                 -- Client A merges the response
                 let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp2
-                lift $ cAstore2 `shouldBe` emptyClientStore
+                lift $ cAstore2 `shouldBe` initialClientStore
                 -- Client A and Client B now have the same store
                 lift $ cAstore2 `shouldBe` cBstore2
         it "does not run into a conflict if two clients both try to sync a deletion" $
@@ -346,13 +349,13 @@ spec = do
             forAllValid $ \time1 ->
               evalDM $ do
                 let cAstore1 =
-                      emptyClientStore
+                      initialClientStore
                         { clientStoreDeletedItems =
                             M.map (const time1) (items :: Map (UUID Int) Int)
                         }
                 -- Both client a and client b delete their items.
                 let cBstore1 =
-                      emptyClientStore {clientStoreDeletedItems = M.map (const time1) items}
+                      initialClientStore {clientStoreDeletedItems = M.map (const time1) items}
                 -- The server still has the undeleted items
                 let sstore1 = ServerStore {serverStoreItems = M.map (\i -> Timed i time1) items}
                 -- Client A makes sync request 1
@@ -364,7 +367,7 @@ spec = do
                   sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty}) -- TODO will probably need some sort of tombstoning.
                 -- Client A merges the response
                 let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
-                lift $ cAstore2 `shouldBe` emptyClientStore
+                lift $ cAstore2 `shouldBe` initialClientStore
                 -- Client B makes sync request 2
                 let req2 = makeSyncRequest cBstore1
                 -- The server processes sync request 2
@@ -375,7 +378,7 @@ spec = do
                 -- Client B merges the response
                 let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
                 lift $ do
-                  cBstore2 `shouldBe` emptyClientStore
+                  cBstore2 `shouldBe` initialClientStore
                   -- Client A and Client B now have the same store
                   cAstore2 `shouldBe` cBstore2
 

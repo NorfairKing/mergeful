@@ -6,6 +6,8 @@ import Data.GenValidity
 
 import Data.Mergeful.Item
 
+import Data.GenValidity.Mergeful.Timed ()
+
 instance GenUnchecked a => GenUnchecked (ClientItem a)
 
 instance GenValid a => GenValid (ClientItem a) where
@@ -27,17 +29,5 @@ instance GenValid a => GenValid (ItemSyncRequest a) where
 instance GenUnchecked a => GenUnchecked (ItemSyncResponse a)
 
 instance GenValid a => GenValid (ItemSyncResponse a) where
-  genValid = genValidStructurallyWithoutExtraChecking
-  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
-
-instance (GenUnchecked a) => GenUnchecked (Timed a)
-
-instance (GenValid a) => GenValid (Timed a) where
-  genValid = genValidStructurallyWithoutExtraChecking
-  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
-
-instance GenUnchecked ServerTime
-
-instance GenValid ServerTime where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering

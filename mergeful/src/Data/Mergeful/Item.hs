@@ -4,7 +4,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
--- | A way to synchronise a single item with safe merge conflicts.
+-- | A way to synchronise an item with safe merge conflicts.
+--
+-- The item is "zero or one" value.
+-- One could say that @Item a = Maybe a@ but there are so such types here.
+-- This methaphor just serves as explanation
+--
 --
 -- The setup is as follows:
 --
@@ -12,77 +17,54 @@
 -- * Each client synchronises with the central server, but never with eachother
 --
 --
--- A central server should operate as follows:
+-- = A client should operate as follows:
 --
--- * The server accepts a 'ItemSyncRequest'.
--- * The server performs operations according to the functionality of 'processServerItemSync'.
--- * The server respons with a 'ItemSyncResponse'.
---
---
--- A client should operate as follows:
+-- The clients starts with an 'initialClientItem'.
 --
 -- * The client produces a 'ItemSyncRequest' with 'makeItemSyncRequest'.
 -- * The client sends that request to the central server and gets a 'ItemSyncResponse'.
 -- * The client then updates its local store with 'mergeItemSyncResponseRaw' or 'mergeItemSyncResponseIgnoreProblems'.
 --
 --
+-- = The central server should operate as follows:
+--
+-- The server starts with an 'initialServerItem'.
+--
+-- * The server accepts a 'ItemSyncRequest'.
+-- * The server performs operations according to the functionality of 'processServerItemSync'.
+-- * The server respons with a 'ItemSyncResponse'.
+--
+--
+--
 -- WARNING:
 -- This whole approach can break down if a server resets its server times
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful.Item
-  ( ClientItem(..)
-  , ItemSyncRequest(..)
+  ( initialClientItem
+  , initialItemSyncRequest
   , makeItemSyncRequest
-  , ItemSyncResponse(..)
-  , MergeResult(..)
   , mergeItemSyncResponseRaw
+  , ItemMergeResult(..)
   , mergeItemSyncResponseIgnoreProblems
   , ignoreMergeProblems
-  , ServerTime
-  , initialServerTime
-  , incrementServerTime
-  , ServerItem(..)
+    -- * Server side
   , initialServerItem
   , processServerItemSync
-  , Timed(..)
+    -- * Types, for reference
+  , ClientItem(..)
+  , ItemSyncRequest(..)
+  , ItemSyncResponse(..)
+  , ServerItem(..)
   ) where
 
 import GHC.Generics (Generic)
 
 import Data.Aeson as JSON
 import Data.Validity
-import Data.Word
 
 import Control.Applicative
 
-newtype ServerTime =
-  ServerTime
-    { unServerTime :: Word64
-    }
-  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
-
-instance Validity ServerTime
-
-initialServerTime :: ServerTime
-initialServerTime = ServerTime 0
-
-incrementServerTime :: ServerTime -> ServerTime
-incrementServerTime (ServerTime w) = ServerTime (succ w)
-
-data Timed a =
-  Timed
-    { timedValue :: !a
-    , timedTime :: !ServerTime
-    }
-  deriving (Show, Eq, Generic)
-
-instance Validity a => Validity (Timed a)
-
-instance FromJSON a => FromJSON (Timed a) where
-  parseJSON = withObject "Timed" $ \o -> Timed <$> o .: "value" <*> o .: "time"
-
-instance ToJSON a => ToJSON (Timed a) where
-  toJSON Timed {..} = object ["value" .= timedValue, "time" .= timedTime]
+import Data.Mergeful.Timed
 
 data ClientItem a
   -- | There is no item on the client side
@@ -123,6 +105,12 @@ instance ToJSON a => ToJSON (ClientItem a) where
         ["type" .= ("changed" :: String), "value" .= timedValue, "time" .= timedTime]
       ClientDeleted t -> ["type" .= ("deleted" :: String), "time" .= t]
 
+-- | A client item to start with.
+--
+-- It contains no value.
+initialClientItem :: ClientItem a
+initialClientItem = ClientEmpty
+
 data ServerItem a
   = ServerEmpty
   | ServerFull !(Timed a)
@@ -142,6 +130,9 @@ instance ToJSON a => ToJSON (ServerItem a) where
       ServerEmpty -> []
       ServerFull Timed {..} -> ["value" .= timedValue, "time" .= timedTime]
 
+-- | A server item to start with.
+--
+-- It contains no value.
 initialServerItem :: ServerItem a
 initialServerItem = ServerEmpty
 
@@ -186,6 +177,12 @@ instance ToJSON a => ToJSON (ItemSyncRequest a) where
           ItemSyncRequestKnownButChanged Timed {..} ->
             o "changed" ["value" .= timedValue, "time" .= timedTime]
           ItemSyncRequestDeletedLocally t -> o "deleted" ["time" .= t]
+
+-- | An intial 'ItemSyncRequest' to start with.
+--
+-- It just asks the server to send over whatever it knows.
+initialItemSyncRequest :: ItemSyncRequest a
+initialItemSyncRequest = ItemSyncRequestPoll
 
 data ItemSyncResponse a
   -- | The client and server are fully in sync, and both empty
@@ -281,6 +278,9 @@ instance ToJSON a => ToJSON (ItemSyncResponse a) where
           ItemSyncResponseConflictClientDeleted a -> o "conflict-client-deleted" ["value" .= a]
           ItemSyncResponseConflictServerDeleted -> oe "conflict-server-deleted"
 
+-- | Produce an 'ItemSyncRequest' from a 'ClientItem'.
+--
+-- Send this to the server for synchronisation.
 makeItemSyncRequest :: ClientItem a -> ItemSyncRequest a
 makeItemSyncRequest cs =
   case cs of
@@ -290,7 +290,7 @@ makeItemSyncRequest cs =
     ClientItemSyncedButChanged t -> ItemSyncRequestKnownButChanged t
     ClientDeleted st -> ItemSyncRequestDeletedLocally st
 
-data MergeResult a
+data ItemMergeResult a
   -- | The merger went succesfully, no conflicts or desyncs
   = MergeSuccess !(ClientItem a)
   -- | There was a merge conflict. The server and client had different, conflicting versions.
@@ -301,20 +301,18 @@ data MergeResult a
   | MergeConflictClientDeleted !a -- ^ The item at the server side
   -- | There was a merge conflict. The server had deleted the item while the client had modified it.
   | MergeConflictServerDeleted !a -- ^ The item at the client side
-  -- | A desync was detected.
-  --
-  -- This only occurs if the server's time has been reset
-  -- or if a client syncs with multiple servers with the same server time.
-  | MergeDesync
-      !ServerTime -- ^ Server time
-      !(Maybe a) -- ^ Item at the server side
   -- | The server responded with a response that did not make sense given the client's request.
   | MergeMismatch
   deriving (Show, Eq, Generic)
 
-instance Validity a => Validity (MergeResult a)
+instance Validity a => Validity (ItemMergeResult a)
 
-mergeItemSyncResponseRaw :: ClientItem a -> ItemSyncResponse a -> MergeResult a
+-- | Merge an 'ItemSyncResponse' into the current 'ClientItem'.
+--
+-- This function will not make any decisions about what to do with
+-- conflicts or mismatches between the request and the response.
+-- It only produces a 'ItemMergeResult' so you can decide what to do with it.
+mergeItemSyncResponseRaw :: ClientItem a -> ItemSyncResponse a -> ItemMergeResult a
 mergeItemSyncResponseRaw cs sr =
   case cs of
     ClientEmpty ->
@@ -346,19 +344,29 @@ mergeItemSyncResponseRaw cs sr =
         ItemSyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
         _ -> MergeMismatch
 
+-- | Merge an 'ItemSyncResponse' into the current 'ClientItem'.
+--
+-- This function ignores any problems that may occur.
+-- In the case of a conclict, it will just not update the client item.
+-- The next sync request will then produce a conflict again.
+--
+-- > mergeItemSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeItemSyncResponseRaw cs
 mergeItemSyncResponseIgnoreProblems :: ClientItem a -> ItemSyncResponse a -> ClientItem a
 mergeItemSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeItemSyncResponseRaw cs
 
-ignoreMergeProblems :: ClientItem a -> MergeResult a -> ClientItem a
+-- | Ignore any merge problems in a 'ItemMergeResult'.
+--
+-- This function just returns the original 'ClientItem' if anything other than 'MergeSuccess' occurs.
+ignoreMergeProblems :: ClientItem a -> ItemMergeResult a -> ClientItem a
 ignoreMergeProblems cs mr =
   case mr of
     MergeSuccess cs' -> cs'
     MergeConflict _ _ -> cs
     MergeConflictServerDeleted _ -> cs
     MergeConflictClientDeleted _ -> cs
-    MergeDesync _ _ -> cs
     MergeMismatch -> cs
 
+-- | Serve an 'ItemSyncRequest' using the current 'ServerItem', producing an 'ItemSyncResponse' and a new 'ServerItem'.
 processServerItemSync :: ServerItem a -> ItemSyncRequest a -> (ItemSyncResponse a, ServerItem a)
 processServerItemSync store sr =
   case store of

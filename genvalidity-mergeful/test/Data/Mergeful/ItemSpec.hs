@@ -10,6 +10,8 @@ import Test.Validity
 import Test.Validity.Aeson
 
 import Data.Mergeful.Item
+import Data.Mergeful.Timed
+
 
 import Data.GenValidity.Mergeful.Item ()
 
@@ -34,7 +36,6 @@ spec = do
   jsonSpecOnValid @(ItemSyncRequest Int)
   genValidSpec @(ItemSyncResponse Int)
   jsonSpecOnValid @(ItemSyncResponse Int)
-  describe "initialServerTime" $ it "is valid" $ shouldBeValid initialServerTime
   describe "makeItemSyncRequest" $
     it "produces valid requests" $ producesValidsOnValids (makeItemSyncRequest @Int)
   describe "mergeItemSyncResponseRaw" $
