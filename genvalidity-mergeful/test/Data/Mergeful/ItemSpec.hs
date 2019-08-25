@@ -24,10 +24,6 @@ forAllSubsequent func =
 
 spec :: Spec
 spec = do
-  genValidSpec @ServerTime
-  jsonSpecOnValid @ServerTime
-  genValidSpec @(Timed Int)
-  jsonSpecOnValid @(Timed Int)
   genValidSpec @(ClientItem Int)
   jsonSpecOnValid @(ClientItem Int)
   genValidSpec @(ServerItem Int)
