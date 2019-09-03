@@ -20,6 +20,10 @@ import Data.GenValidity.Mergeful.Item ()
 
 import Data.Mergeful
 
+instance GenUnchecked ClientId
+
+instance GenValid ClientId
+
 instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (ClientStore i a)
 
 instance (GenValid i, Ord i, GenValid a) => GenValid (ClientStore i a) where
@@ -71,7 +75,7 @@ instance (GenValid i, Ord i, GenValid a) => GenValid (SyncResponse i a) where
       (s13, s14) <- splitSet s06
       (s15, s16) <- splitSet s07
       syncResponseClientAdded <-
-        do m <- (genValid :: Gen (Map Int ()))
+        do m <- (genValid :: Gen (Map ClientId ()))
            if S.null s08
              then pure M.empty
              else forM m $ \() -> (,) <$> elements (S.toList s08) <*> genValid

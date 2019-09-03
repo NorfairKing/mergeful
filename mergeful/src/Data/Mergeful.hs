@@ -49,8 +49,9 @@ module Data.Mergeful
   , SyncResponse(..)
   , emptySyncResponse
   , ServerStore(..)
+  , ClientId(..)
   -- * Utility functions for implementing client-side merging
-  , addedItemsIntmap
+  , addedItemsClientIdMap
   , mergeAddedItems
   , mergeSyncedButChangedItems
   , mergeDeletedItems
@@ -73,6 +74,14 @@ import Data.Validity.Containers ()
 
 import Data.Mergeful.Item
 import Data.Mergeful.Timed
+
+newtype ClientId =
+  ClientId
+    { unClientId :: Int
+    }
+  deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSONKey, FromJSONKey)
+
+instance Validity ClientId
 
 data ClientStore i a =
   ClientStore
@@ -141,7 +150,7 @@ initialServerStore = ServerStore {serverStoreItems = M.empty}
 
 data SyncRequest i a =
   SyncRequest
-    { syncRequestNewItems :: Map Int a -- Go back to a list here
+    { syncRequestNewItems :: Map ClientId a
     , syncRequestKnownItems :: Map i ServerTime
     , syncRequestKnownButChangedItems :: Map i (Timed a)
     , syncRequestDeletedItems :: Map i ServerTime
@@ -192,7 +201,7 @@ initialSyncRequest =
 
 data SyncResponse i a =
   SyncResponse
-    { syncResponseClientAdded :: Map Int (i, ServerTime) -- TODO replace by an intmap
+    { syncResponseClientAdded :: Map ClientId (i, ServerTime) -- TODO replace by an intmap
     , syncResponseClientChanged :: Map i ServerTime
     , syncResponseClientDeleted :: Set i
     , syncResponseServerAdded :: Map i (Timed a)
@@ -276,7 +285,7 @@ jNull n s =
 makeSyncRequest :: ClientStore i a -> SyncRequest i a
 makeSyncRequest ClientStore {..} =
   SyncRequest
-    { syncRequestNewItems = addedItemsIntmap clientStoreAddedItems
+    { syncRequestNewItems = addedItemsClientIdMap clientStoreAddedItems
     , syncRequestKnownItems = M.map timedTime clientStoreSyncedItems
     , syncRequestKnownButChangedItems = clientStoreSyncedButChangedItems
     , syncRequestDeletedItems = clientStoreDeletedItems
@@ -290,7 +299,7 @@ makeSyncRequest ClientStore {..} =
 mergeSyncResponseIgnoreProblems :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
-        mergeAddedItems (addedItemsIntmap (clientStoreAddedItems cs)) syncResponseClientAdded
+        mergeAddedItems (addedItemsClientIdMap (clientStoreAddedItems cs)) syncResponseClientAdded
       (syncedButNotChangedLeftovers, newModifiedItems) =
         mergeSyncedButChangedItems (clientStoreSyncedButChangedItems cs) syncResponseClientChanged
       deletedItemsLeftovers =
@@ -311,17 +320,17 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
             synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
         }
 
-addedItemsIntmap :: [a] -> Map Int a
-addedItemsIntmap = M.fromList . zip [0 ..]
+addedItemsClientIdMap :: [a] -> Map ClientId a
+addedItemsClientIdMap = M.fromList . zip [ClientId 0 ..]
 
 mergeAddedItems ::
      forall i a. Ord i
-  => Map Int a
-  -> Map Int (i, ServerTime)
+  => Map ClientId a
+  -> Map ClientId (i, ServerTime)
   -> ([a], Map i (Timed a))
 mergeAddedItems local added = M.foldlWithKey go ([], M.empty) local
   where
-    go :: ([a], Map i (Timed a)) -> Int -> a -> ([a], Map i (Timed a))
+    go :: ([a], Map i (Timed a)) -> ClientId -> a -> ([a], Map i (Timed a))
     go (as, m) i a =
       case M.lookup i added of
         Nothing -> (a : as, m)
@@ -344,7 +353,7 @@ mergeDeletedItems :: Ord i => Map i b -> Set i -> (Map i b)
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 
 addToSyncResponse ::
-     Ord i => SyncResponse i a -> ClientId i -> ItemSyncResponse a -> SyncResponse i a
+     Ord i => SyncResponse i a -> Identifier i -> ItemSyncResponse a -> SyncResponse i a
 addToSyncResponse sr cid isr =
   case cid of
     BothServerAndClient i int ->
@@ -401,9 +410,9 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
       thesePairs = unionThese serverIdentifiedItems clientIdentifiedSyncRequests
       requestPairs :: Map i (ServerItem a, ItemSyncRequest a)
       requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
-      unidentifedPairs :: Map Int (ServerItem a, ItemSyncRequest a)
+      unidentifedPairs :: Map ClientId (ServerItem a, ItemSyncRequest a)
       unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
-      unidentifedResults :: Map Int (ItemSyncResponse a, ServerItem a)
+      unidentifedResults :: Map ClientId (ItemSyncResponse a, ServerItem a)
       unidentifedResults = M.map (uncurry processServerItemSync) unidentifedPairs
   generatedResults <-
     fmap M.fromList $
@@ -412,7 +421,7 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
       pure ((uuid, int), r)
   let identifiedResults :: Map i (ItemSyncResponse a, ServerItem a)
       identifiedResults = M.map (uncurry processServerItemSync) requestPairs
-      allResults :: Map (ClientId i) (ItemSyncResponse a, ServerItem a)
+      allResults :: Map (Identifier i) (ItemSyncResponse a, ServerItem a)
       allResults =
         M.union
           (M.mapKeys OnlyServer identifiedResults)
@@ -439,9 +448,9 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
           allResults
   pure (resp, ServerStore newStore)
 
-data ClientId i
+data Identifier i
   = OnlyServer i
-  | BothServerAndClient i Int
+  | BothServerAndClient i ClientId
   deriving (Show, Eq, Ord, Generic)
 
 unionThese :: Ord k => Map k a -> Map k b -> Map k (These a b)

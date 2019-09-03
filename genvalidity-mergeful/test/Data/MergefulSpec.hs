@@ -128,7 +128,7 @@ spec = do
               (resp1, sstore2) <- processServerSync genD sstore1 req1
               let addedItems = syncResponseClientAdded resp1
               case M.toList addedItems of
-                [(0, (uuid, st))] -> do
+                [(ClientId 0, (uuid, st))] -> do
                   let time = initialServerTime
                   lift $ st `shouldBe` time
                   let items = M.singleton uuid (Timed i st)
@@ -290,7 +290,7 @@ spec = do
               -- The server processes sync request 1
               (resp1, sstore2) <- processServerSync genD sstore1 req1
               let (rest, items) =
-                    mergeAddedItems (addedItemsIntmap is) (syncResponseClientAdded resp1)
+                    mergeAddedItems (addedItemsClientIdMap is) (syncResponseClientAdded resp1)
               lift $ do
                 rest `shouldBe` []
                 sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
