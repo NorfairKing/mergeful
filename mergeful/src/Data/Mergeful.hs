@@ -37,6 +37,7 @@
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful
   ( initialClientStore
+  , addItemToClientStore
   , initialSyncRequest
   , makeSyncRequest
   , mergeSyncResponseIgnoreProblems
@@ -51,10 +52,11 @@ module Data.Mergeful
   , ServerStore(..)
   , ClientId(..)
   -- * Utility functions for implementing client-side merging
-  , addedItemsClientIdMap
   , mergeAddedItems
   , mergeSyncedButChangedItems
   , mergeDeletedItems
+  -- * Utility functions for implementing server-side responding
+  , addToSyncResponse
   ) where
 
 import GHC.Generics (Generic)
@@ -71,21 +73,22 @@ import Data.Text (Text)
 import Data.These
 import Data.Validity
 import Data.Validity.Containers ()
+import Data.Word
 
 import Data.Mergeful.Item
 import Data.Mergeful.Timed
 
 newtype ClientId =
   ClientId
-    { unClientId :: Int
+    { unClientId :: Word64
     }
-  deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSONKey, FromJSONKey)
+  deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON, ToJSONKey, FromJSON, FromJSONKey)
 
 instance Validity ClientId
 
 data ClientStore i a =
   ClientStore
-    { clientStoreAddedItems :: [a]
+    { clientStoreAddedItems :: Map ClientId a
     , clientStoreSyncedItems :: Map i (Timed a)
     , clientStoreSyncedButChangedItems :: Map i (Timed a)
     , clientStoreDeletedItems :: Map i ServerTime
@@ -108,7 +111,7 @@ instance (Validity i, Ord i, Validity a) => Validity (ClientStore i a) where
 instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (ClientStore i a) where
   parseJSON =
     withObject "ClientStore" $ \o ->
-      ClientStore <$> o .:? "added" .!= [] <*> o .:? "synced" .!= M.empty <*>
+      ClientStore <$> o .:? "added" .!= M.empty <*> o .:? "synced" .!= M.empty <*>
       o .:? "changed" .!= M.empty <*>
       o .:? "deleted" .!= M.empty
 
@@ -128,11 +131,27 @@ instance (ToJSONKey i, ToJSON a) => ToJSON (ClientStore i a) where
 initialClientStore :: ClientStore i a
 initialClientStore =
   ClientStore
-    { clientStoreAddedItems = []
+    { clientStoreAddedItems = M.empty
     , clientStoreSyncedItems = M.empty
     , clientStoreSyncedButChangedItems = M.empty
     , clientStoreDeletedItems = M.empty
     }
+
+-- | Add an item to a client store as an added item.
+--
+-- This will take care of the uniqueness constraint of the 'ClientId's in the map.
+addItemToClientStore :: a -> ClientStore i a -> ClientStore i a
+addItemToClientStore a cs =
+  let oldAddedItems = clientStoreAddedItems cs
+      newAddedItems =
+        let newKey =
+              ClientId $
+              if M.null oldAddedItems
+                then 0
+                else let (ClientId k, _) = M.findMax oldAddedItems
+                      in succ k
+         in M.insert newKey a oldAddedItems
+   in cs {clientStoreAddedItems = newAddedItems}
 
 newtype ServerStore i a =
   ServerStore
@@ -201,7 +220,7 @@ initialSyncRequest =
 
 data SyncResponse i a =
   SyncResponse
-    { syncResponseClientAdded :: Map ClientId (i, ServerTime) -- TODO replace by an intmap
+    { syncResponseClientAdded :: Map ClientId (i, ServerTime)
     , syncResponseClientChanged :: Map i ServerTime
     , syncResponseClientDeleted :: Set i
     , syncResponseServerAdded :: Map i (Timed a)
@@ -285,7 +304,7 @@ jNull n s =
 makeSyncRequest :: ClientStore i a -> SyncRequest i a
 makeSyncRequest ClientStore {..} =
   SyncRequest
-    { syncRequestNewItems = addedItemsClientIdMap clientStoreAddedItems
+    { syncRequestNewItems = clientStoreAddedItems
     , syncRequestKnownItems = M.map timedTime clientStoreSyncedItems
     , syncRequestKnownButChangedItems = clientStoreSyncedButChangedItems
     , syncRequestDeletedItems = clientStoreDeletedItems
@@ -299,7 +318,7 @@ makeSyncRequest ClientStore {..} =
 mergeSyncResponseIgnoreProblems :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
-        mergeAddedItems (addedItemsClientIdMap (clientStoreAddedItems cs)) syncResponseClientAdded
+        mergeAddedItems (clientStoreAddedItems cs) syncResponseClientAdded
       (syncedButNotChangedLeftovers, newModifiedItems) =
         mergeSyncedButChangedItems (clientStoreSyncedButChangedItems cs) syncResponseClientChanged
       deletedItemsLeftovers =
@@ -320,20 +339,17 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
             synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
         }
 
-addedItemsClientIdMap :: [a] -> Map ClientId a
-addedItemsClientIdMap = M.fromList . zip [ClientId 0 ..]
-
 mergeAddedItems ::
      forall i a. Ord i
   => Map ClientId a
   -> Map ClientId (i, ServerTime)
-  -> ([a], Map i (Timed a))
-mergeAddedItems local added = M.foldlWithKey go ([], M.empty) local
+  -> (Map ClientId a, Map i (Timed a))
+mergeAddedItems local added = M.foldlWithKey go (M.empty, M.empty) local
   where
-    go :: ([a], Map i (Timed a)) -> ClientId -> a -> ([a], Map i (Timed a))
+    go :: (Map ClientId a, Map i (Timed a)) -> ClientId -> a -> (Map ClientId a, Map i (Timed a))
     go (as, m) i a =
       case M.lookup i added of
-        Nothing -> (a : as, m)
+        Nothing -> (M.insert i a as, m)
         Just (k, st) -> (as, M.insert k (Timed {timedValue = a, timedTime = st}) m)
 
 mergeSyncedButChangedItems ::
@@ -388,6 +404,13 @@ addToSyncResponse sr cid isr =
             { syncResponseConflictsServerDeleted =
                 S.insert i $ syncResponseConflictsServerDeleted sr
             }
+
+data Identifier i
+  = OnlyServer i
+  | BothServerAndClient i ClientId
+  deriving (Show, Eq, Ord, Generic)
+
+instance Validity i => Validity (Identifier i)
 
 -- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
 processServerSync ::
@@ -447,11 +470,6 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
                BothServerAndClient i _ -> i)
           allResults
   pure (resp, ServerStore newStore)
-
-data Identifier i
-  = OnlyServer i
-  | BothServerAndClient i ClientId
-  deriving (Show, Eq, Ord, Generic)
 
 unionThese :: Ord k => Map k a -> Map k b -> Map k (These a b)
 unionThese m1 m2 = M.unionWith go (M.map This m1) (M.map That m2)

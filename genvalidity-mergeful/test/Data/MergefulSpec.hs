@@ -34,6 +34,8 @@ import Data.GenValidity.Mergeful.Item ()
 
 spec :: Spec
 spec = do
+  genValidSpec @ClientId
+  jsonSpecOnValid @ClientId
   genValidSpec @(ClientStore Int Int)
   jsonSpecOnValid @(ClientStore Int Int)
   genValidSpec @(ServerStore Int Int)
@@ -42,9 +44,18 @@ spec = do
   jsonSpecOnValid @(SyncRequest Int Int)
   genValidSpec @(SyncResponse Int Int)
   jsonSpecOnValid @(SyncResponse Int Int)
+  describe "initialClientStore" $ it "is valid" $ shouldBeValid $ initialClientStore @Int @Int
+  describe "addItemToClientStore" $
+    it "produces valid stores" $ producesValidsOnValids2 (addItemToClientStore @Int @Int)
+  describe "initialServerStore" $ it "is valid" $ shouldBeValid $ initialServerStore @Int @Int
+  describe "initialSyncRequest" $ it "is valid" $ shouldBeValid $ initialSyncRequest @Int @Int
   describe "emptySyncResponse" $ it "is valid" $ shouldBeValid $ emptySyncResponse @Int @Int
   describe "makeSyncRequest" $
     it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @Int @Int)
+  describe "mergeAddedItems" $
+    it "produces valid results" $ producesValidsOnValids2 (mergeAddedItems @Int @Int)
+  describe "mergeSyncedButChangedItems" $
+    it "produces valid results" $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
   describe "mergeAddedItems" $
     it "produces valid results" $ producesValidsOnValids2 (mergeAddedItems @Int @Int)
   describe "mergeSyncedButChangedItems" $
@@ -97,7 +108,7 @@ spec = do
               let cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp
               lift $ do
                 sort (M.elems (M.map timedValue (clientStoreSyncedItems cstore2))) `shouldBe`
-                  sort items
+                  sort (M.elems items)
                 clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
         it "is idempotent with one client" $
           forAllValid $ \cstore1 ->
@@ -117,7 +128,7 @@ spec = do
         it "successfully syncs an addition accross to a second client" $
           forAllValid $ \i ->
             evalDM $ do
-              let cAstore1 = initialClientStore {clientStoreAddedItems = [i]}
+              let cAstore1 = initialClientStore {clientStoreAddedItems = M.singleton (ClientId 0) i}
               -- Client B is empty
               let cBstore1 = initialClientStore :: ClientStore (UUID Int) Int
               -- The server is empty
@@ -289,10 +300,9 @@ spec = do
               let req1 = makeSyncRequest cAstore1
               -- The server processes sync request 1
               (resp1, sstore2) <- processServerSync genD sstore1 req1
-              let (rest, items) =
-                    mergeAddedItems (addedItemsClientIdMap is) (syncResponseClientAdded resp1)
+              let (rest, items) = mergeAddedItems is (syncResponseClientAdded resp1)
               lift $ do
-                rest `shouldBe` []
+                rest `shouldBe` M.empty
                 sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
               -- Client A merges the response
               let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
