@@ -415,43 +415,6 @@ mergeSyncedButChangedItems local changed = M.foldlWithKey go (M.empty, M.empty) 
 mergeDeletedItems :: Ord i => Map i b -> Set i -> (Map i b)
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 
-addToSyncResponse ::
-     Ord i => SyncResponse i a -> Identifier i -> ItemSyncResponse a -> SyncResponse i a
-addToSyncResponse sr cid isr =
-  case cid of
-    BothServerAndClient i int ->
-      case isr of
-        ItemSyncResponseClientAdded st ->
-          sr {syncResponseClientAdded = M.insert int (i, st) $ syncResponseClientAdded sr}
-        _ -> error "should not happen"
-    OnlyServer i ->
-      case isr of
-        ItemSyncResponseInSyncEmpty -> sr
-        ItemSyncResponseInSyncFull -> sr
-        ItemSyncResponseClientAdded _ -> sr -- Should not happen.
-        ItemSyncResponseClientChanged st ->
-          sr {syncResponseClientChanged = M.insert i st $ syncResponseClientChanged sr}
-        ItemSyncResponseClientDeleted ->
-          sr {syncResponseClientDeleted = S.insert i $ syncResponseClientDeleted sr}
-        ItemSyncResponseServerAdded t ->
-          sr {syncResponseServerAdded = M.insert i t $ syncResponseServerAdded sr}
-        ItemSyncResponseServerChanged t ->
-          sr {syncResponseServerChanged = M.insert i t $ syncResponseServerChanged sr}
-        ItemSyncResponseServerDeleted ->
-          sr {syncResponseServerDeleted = S.insert i $ syncResponseServerDeleted sr}
-        ItemSyncResponseConflict a ->
-          sr {syncResponseConflicts = M.insert i a $ syncResponseConflicts sr}
-        ItemSyncResponseConflictClientDeleted a ->
-          sr
-            { syncResponseConflictsClientDeleted =
-                M.insert i a $ syncResponseConflictsClientDeleted sr
-            }
-        ItemSyncResponseConflictServerDeleted ->
-          sr
-            { syncResponseConflictsServerDeleted =
-                S.insert i $ syncResponseConflictsServerDeleted sr
-            }
-
 data Identifier i
   = OnlyServer i
   | BothServerAndClient i ClientId
@@ -547,6 +510,43 @@ produceSyncResults allResults
           allResults
       -- return them both.
    in (resp, ServerStore newStore)
+
+addToSyncResponse ::
+     Ord i => SyncResponse i a -> Identifier i -> ItemSyncResponse a -> SyncResponse i a
+addToSyncResponse sr cid isr =
+  case cid of
+    BothServerAndClient i int ->
+      case isr of
+        ItemSyncResponseClientAdded st ->
+          sr {syncResponseClientAdded = M.insert int (i, st) $ syncResponseClientAdded sr}
+        _ -> error "should not happen"
+    OnlyServer i ->
+      case isr of
+        ItemSyncResponseInSyncEmpty -> sr
+        ItemSyncResponseInSyncFull -> sr
+        ItemSyncResponseClientAdded _ -> sr -- Should not happen.
+        ItemSyncResponseClientChanged st ->
+          sr {syncResponseClientChanged = M.insert i st $ syncResponseClientChanged sr}
+        ItemSyncResponseClientDeleted ->
+          sr {syncResponseClientDeleted = S.insert i $ syncResponseClientDeleted sr}
+        ItemSyncResponseServerAdded t ->
+          sr {syncResponseServerAdded = M.insert i t $ syncResponseServerAdded sr}
+        ItemSyncResponseServerChanged t ->
+          sr {syncResponseServerChanged = M.insert i t $ syncResponseServerChanged sr}
+        ItemSyncResponseServerDeleted ->
+          sr {syncResponseServerDeleted = S.insert i $ syncResponseServerDeleted sr}
+        ItemSyncResponseConflict a ->
+          sr {syncResponseConflicts = M.insert i a $ syncResponseConflicts sr}
+        ItemSyncResponseConflictClientDeleted a ->
+          sr
+            { syncResponseConflictsClientDeleted =
+                M.insert i a $ syncResponseConflictsClientDeleted sr
+            }
+        ItemSyncResponseConflictServerDeleted ->
+          sr
+            { syncResponseConflictsServerDeleted =
+                S.insert i $ syncResponseConflictsServerDeleted sr
+            }
 
 unionTheseMaps :: Ord k => Map k a -> Map k b -> Map k (These a b)
 unionTheseMaps m1 m2 = M.unionWith go (M.map This m1) (M.map That m2)
