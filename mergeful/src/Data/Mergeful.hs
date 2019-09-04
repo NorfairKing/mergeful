@@ -78,6 +78,9 @@ import Data.Word
 import Data.Mergeful.Item
 import Data.Mergeful.Timed
 
+-- | A Client-side identifier for items.
+--
+-- These only need to be unique at the client.
 newtype ClientId =
   ClientId
     { unClientId :: Word64
@@ -89,9 +92,15 @@ instance Validity ClientId
 data ClientStore i a =
   ClientStore
     { clientStoreAddedItems :: Map ClientId a
+      -- ^ These items are new locally but have not been synced to the server yet.
     , clientStoreSyncedItems :: Map i (Timed a)
+      -- ^ These items have been synced at their respective 'ServerTime's.
     , clientStoreSyncedButChangedItems :: Map i (Timed a)
+      -- ^ These items have been synced at their respective 'ServerTime's
+      -- but modified locally since then.
     , clientStoreDeletedItems :: Map i ServerTime
+      -- ^ These items have been deleted locally after they were synced
+      -- but the server has not been notified of that yet.
     }
   deriving (Show, Eq, Generic)
 
@@ -156,6 +165,8 @@ addItemToClientStore a cs =
 newtype ServerStore i a =
   ServerStore
     { serverStoreItems :: Map i (Timed a)
+      -- ^ A map of items, named using an 'i', together with the 'ServerTime' at which
+      -- they were last synced.
     }
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
@@ -170,9 +181,15 @@ initialServerStore = ServerStore {serverStoreItems = M.empty}
 data SyncRequest i a =
   SyncRequest
     { syncRequestNewItems :: Map ClientId a
+      -- ^ These items are new locally but have not been synced to the server yet.
     , syncRequestKnownItems :: Map i ServerTime
+      -- ^ These items have been synced at their respective 'ServerTime's.
     , syncRequestKnownButChangedItems :: Map i (Timed a)
+      -- ^ These items have been synced at their respective 'ServerTime's
+      -- but modified locally since then.
     , syncRequestDeletedItems :: Map i ServerTime
+      -- ^ These items have been deleted locally after they were synced
+      -- but the server has not been notified of that yet.
     }
   deriving (Show, Eq, Generic)
 
@@ -221,14 +238,44 @@ initialSyncRequest =
 data SyncResponse i a =
   SyncResponse
     { syncResponseClientAdded :: Map ClientId (i, ServerTime)
+      -- ^ The client added these items and server has succesfully been made aware of that.
+      --
+      -- The client needs to update their server times
     , syncResponseClientChanged :: Map i ServerTime
+      -- ^ The client changed these items and server has succesfully been made aware of that.
+      --
+      -- The client needs to update their server times
     , syncResponseClientDeleted :: Set i
+      -- ^ The client deleted these items and server has succesfully been made aware of that.
+      --
+      -- The client can delete them from its deleted items
     , syncResponseServerAdded :: Map i (Timed a)
+      -- ^ These items have been added on the server side
+      --
+      -- The client should add them too.
     , syncResponseServerChanged :: Map i (Timed a)
+      -- ^ These items have been modified on the server side.
+      --
+      -- The client should modify them too.
     , syncResponseServerDeleted :: Set i
+      -- ^ These items were deleted on the server side
+      --
+      -- The client should delete them too
     , syncResponseConflicts :: Map i a
+      -- ^ These are conflicts where the server and the client both have an item, but it is different.
+      --
+      -- The server kept its part of each, the client can either take whatever the server gave them
+      -- or deal with the conflicts somehow, and then try to re-sync.
     , syncResponseConflictsClientDeleted :: Map i a
+      -- ^ These are conflicts where the server has an item but the client does not.
+      --
+      -- The server kept its item, the client can either take whatever the server gave them
+      -- or deal with the conflicts somehow, and then try to re-sync.
     , syncResponseConflictsServerDeleted :: Set i
+      -- ^ These are conflicts where the server has no item but the client has a modified item.
+      --
+      -- The server left its item deleted, the client can either delete its items too
+      -- or deal with the conflicts somehow, and then try to re-sync.
     }
   deriving (Show, Eq, Generic)
 
@@ -381,7 +428,7 @@ addToSyncResponse sr cid isr =
       case isr of
         ItemSyncResponseInSyncEmpty -> sr
         ItemSyncResponseInSyncFull -> sr
-        ItemSyncResponseClientAdded _ -> error "should not happen."
+        ItemSyncResponseClientAdded _ -> sr -- Should not happen.
         ItemSyncResponseClientChanged st ->
           sr {syncResponseClientChanged = M.insert i st $ syncResponseClientChanged sr}
         ItemSyncResponseClientDeleted ->
@@ -419,42 +466,71 @@ processServerSync ::
   -> ServerStore i a
   -> SyncRequest i a
   -> m (SyncResponse i a, ServerStore i a)
-processServerSync genId ServerStore {..} SyncRequest {..} = do
-  let clientIdentifiedSyncRequests :: Map i (ItemSyncRequest a)
-      clientIdentifiedSyncRequests =
-        M.unions
-          [ M.map ItemSyncRequestKnown syncRequestKnownItems
-          , M.map ItemSyncRequestKnownButChanged syncRequestKnownButChangedItems
-          , M.map ItemSyncRequestDeletedLocally syncRequestDeletedItems
-          ]
-      serverIdentifiedItems :: Map i (ServerItem a)
-      serverIdentifiedItems = M.map ServerFull serverStoreItems
-      thesePairs :: Map i (These (ServerItem a) (ItemSyncRequest a))
-      thesePairs = unionThese serverIdentifiedItems clientIdentifiedSyncRequests
-      requestPairs :: Map i (ServerItem a, ItemSyncRequest a)
-      requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
-      unidentifedPairs :: Map ClientId (ServerItem a, ItemSyncRequest a)
+processServerSync genId ServerStore {..} sr@SyncRequest {..}
+      -- Make tuples of requests for all of the items that only had a client identifier.
+ = do
+  let unidentifedPairs :: Map ClientId (ServerItem a, ItemSyncRequest a)
       unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
+      -- Make tuples of results for each of the unidentifier tuples.
       unidentifedResults :: Map ClientId (ItemSyncResponse a, ServerItem a)
       unidentifedResults = M.map (uncurry processServerItemSync) unidentifedPairs
-  generatedResults <-
-    fmap M.fromList $
-    forM (M.toList unidentifedResults) $ \(int, r) -> do
-      uuid <- genId
-      pure ((uuid, int), r)
-  let identifiedResults :: Map i (ItemSyncResponse a, ServerItem a)
+  generatedResults <- generateIdentifiersFor genId unidentifedResults
+      -- Gather the items that had a server identifier already.
+  let clientIdentifiedSyncRequests :: Map i (ItemSyncRequest a)
+      clientIdentifiedSyncRequests = identifiedItemSyncRequests sr
+      -- Make 'ServerItem's for each of the items on the server side
+      serverIdentifiedItems :: Map i (ServerItem a)
+      serverIdentifiedItems = M.map ServerFull serverStoreItems
+      -- Match up client items with server items by their id.
+      thesePairs :: Map i (These (ServerItem a) (ItemSyncRequest a))
+      thesePairs = unionTheseMaps serverIdentifiedItems clientIdentifiedSyncRequests
+      -- Make tuples of server 'ServerItem's and 'ItemSyncRequest's for each of the items with an id
+      requestPairs :: Map i (ServerItem a, ItemSyncRequest a)
+      requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
+      -- Make tuples of results for each of the tuplus that had a server identifier.
+      identifiedResults :: Map i (ItemSyncResponse a, ServerItem a)
       identifiedResults = M.map (uncurry processServerItemSync) requestPairs
-      allResults :: Map (Identifier i) (ItemSyncResponse a, ServerItem a)
+      -- Put together the results together
+  let allResults :: Map (Identifier i) (ItemSyncResponse a, ServerItem a)
       allResults =
         M.union
           (M.mapKeys OnlyServer identifiedResults)
           (M.mapKeys (uncurry BothServerAndClient) generatedResults)
-      resp :: SyncResponse i a
+  pure $ produceSyncResults allResults
+
+identifiedItemSyncRequests :: Ord i => SyncRequest i a -> Map i (ItemSyncRequest a)
+identifiedItemSyncRequests SyncRequest {..} =
+  M.unions
+    [ M.map ItemSyncRequestKnown syncRequestKnownItems
+    , M.map ItemSyncRequestKnownButChanged syncRequestKnownButChangedItems
+    , M.map ItemSyncRequestDeletedLocally syncRequestDeletedItems
+    ]
+
+generateIdentifiersFor ::
+     (Ord i, Monad m)
+  => m i
+  -> Map ClientId (ItemSyncResponse a, ServerItem a)
+  -> m (Map (i, ClientId) (ItemSyncResponse a, ServerItem a))
+generateIdentifiersFor genId unidentifedResults =
+  fmap M.fromList $
+  forM (M.toList unidentifedResults) $ \(int, r) -> do
+    uuid <- genId
+    pure ((uuid, int), r)
+
+produceSyncResults ::
+     forall i a. Ord i
+  => Map (Identifier i) (ItemSyncResponse a, ServerItem a)
+  -> (SyncResponse i a, ServerStore i a)
+produceSyncResults allResults
+      -- Produce a sync response
+ =
+  let resp :: SyncResponse i a
       resp =
         M.foldlWithKey
           (\sr cid (isr, _) -> addToSyncResponse sr cid isr)
           emptySyncResponse
           allResults
+      -- Produce a new server store
       newStore :: Map i (Timed a)
       newStore =
         M.mapMaybe
@@ -469,10 +545,11 @@ processServerSync genId ServerStore {..} SyncRequest {..} = do
                OnlyServer i -> i
                BothServerAndClient i _ -> i)
           allResults
-  pure (resp, ServerStore newStore)
+      -- return them both.
+   in (resp, ServerStore newStore)
 
-unionThese :: Ord k => Map k a -> Map k b -> Map k (These a b)
-unionThese m1 m2 = M.unionWith go (M.map This m1) (M.map That m2)
+unionTheseMaps :: Ord k => Map k a -> Map k b -> Map k (These a b)
+unionTheseMaps m1 m2 = M.unionWith go (M.map This m1) (M.map That m2)
   where
     go (This a) (That b) = These a b
     go _ _ = error "should not happen."

@@ -112,7 +112,9 @@ initialClientItem :: ClientItem a
 initialClientItem = ClientEmpty
 
 data ServerItem a
+  -- | There is no item on the server side
   = ServerEmpty
+  -- | There is an item on the server side, and it was last synced at the given 'ServerTime'.
   | ServerFull !(Timed a)
   deriving (Show, Eq, Generic)
 
@@ -139,7 +141,7 @@ initialServerItem = ServerEmpty
 data ItemSyncRequest a
   -- | There is no item locally
   = ItemSyncRequestPoll
-  -- | There is an item locally that hasn't been synced to the server yet.
+  -- | There is an item locally that has not been synced to the server yet.
   | ItemSyncRequestNew !a
   -- | There is an item locally that was synced at the given 'ServerTime'
   | ItemSyncRequestKnown !ServerTime
@@ -203,7 +205,7 @@ data ItemSyncResponse a
   | ItemSyncResponseClientChanged !ServerTime
   -- | The client deleted an item and server has succesfully been made aware of that.
   --
-  -- Nothing needs to be done at the client side.
+  -- The client can delete it from its deleted items
   | ItemSyncResponseClientDeleted
   -- | This item has been added on the server side
   --
