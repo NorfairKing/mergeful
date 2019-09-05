@@ -77,7 +77,7 @@ spec = do
                   req = ValueSyncRequestKnownButChanged (Timed j st)
               let (resp, store2) = processServerValueSync @Int store1 req
               store2 `shouldBe` store1
-              resp `shouldBe` ValueSyncResponseConflict i
+              resp `shouldBe` ValueSyncResponseConflict (Timed i st')
   describe "syncing" $ do
     it "succesfully syncs a modification across to a second client" $
       forAllValid $ \time1 ->

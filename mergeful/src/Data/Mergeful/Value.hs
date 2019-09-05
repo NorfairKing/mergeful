@@ -44,7 +44,9 @@ module Data.Mergeful.Value
   , mergeValueSyncResponseRaw
   , ValueMergeResult(..)
   , mergeValueSyncResponseIgnoreProblems
-  , ignoreMergeProblems
+  , mergeIgnoringProblems
+  , mergeUsingFunction
+  , mergeFromServer
     -- * Server side
   , initialServerValue
   , processServerValueSync
@@ -177,7 +179,7 @@ data ValueSyncResponse a
   -- The server and the client both changed the value in a conflicting manner.
   -- The server kept its part, the client can either take whatever the server gave them
   -- or deal with the conflict somehow, and then try to re-sync.
-  | ValueSyncResponseConflict !a -- ^ The item at the server side
+  | ValueSyncResponseConflict !(Timed a) -- ^ The item at the server side
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ValueSyncResponse a)
@@ -221,7 +223,7 @@ data ValueMergeResult a
   -- | There was a merge conflict. The server and client had different, conflicting versions.
   | MergeConflict
       !a -- ^ The item at the client side
-      !a -- ^ The item at the server side
+      !(Timed a) -- ^ The item at the server side
   | MergeMismatch
   -- ^ The server responded with a response that did not make sense given the client's request.
   --
@@ -256,24 +258,57 @@ mergeValueSyncResponseRaw cv@(ClientValue ct cf) sr =
 -- In the case of a conclict, it will just not update the client item.
 -- The next sync request will then produce a conflict again.
 --
--- > mergeValueSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeValueSyncResponseRaw cs
+-- > mergeValueSyncResponseIgnoreProblems cs = mergeIgnoringProblems cs . mergeValueSyncResponseRaw cs
 mergeValueSyncResponseIgnoreProblems :: ClientValue a -> ValueSyncResponse a -> ClientValue a
-mergeValueSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeValueSyncResponseRaw cs
+mergeValueSyncResponseIgnoreProblems cs = mergeIgnoringProblems cs . mergeValueSyncResponseRaw cs
 
 -- | Ignore any merge problems in a 'ValueMergeResult'.
 --
 -- This function just returns the original 'ClientValue' if anything other than 'MergeSuccess' occurs.
-ignoreMergeProblems :: ClientValue a -> ValueMergeResult a -> ClientValue a
-ignoreMergeProblems cs mr =
+--
+-- This function ignores any problems that may occur.
+-- In the case of a conclict, it will just not update the client item.
+-- The next sync request will then produce a conflict again.
+--
+-- Pro: does not lose data
+--
+-- __Con: Clients will diverge when a conflict occurs__
+mergeIgnoringProblems :: ClientValue a -> ValueMergeResult a -> ClientValue a
+mergeIgnoringProblems cs mr =
   case mr of
     MergeSuccess cs' -> cs'
     MergeConflict _ _ -> cs
     MergeMismatch -> cs
 
+-- | Resolve a 'ValueMergeResult' using a given merge strategy.
+--
+-- This function ignores 'MergeMismatch' and will just return the original 'ClientValue' in that case.
+--
+-- In order for clients to converge on the same value correctly, this function must be:
+--
+-- * Associative
+-- * Idempotent
+-- * The same on all clients
+mergeUsingFunction ::
+     (a -> Timed a -> Timed a) -> ClientValue a -> ValueMergeResult a -> ClientValue a
+mergeUsingFunction func cs mr =
+  case mr of
+    MergeSuccess cs' -> cs'
+    MergeConflict a1 a2 -> ClientValue (func a1 a2) NotChanged
+    MergeMismatch -> cs
+
+-- | Resolve a 'ValueMergeResult' by taking whatever the server gave the client.
+--
+-- Pro: Clients will converge on the same value.
+--
+-- __Con: Conflicting updates will be lost.__
+mergeFromServer :: ClientValue a -> ValueMergeResult a -> ClientValue a
+mergeFromServer = mergeUsingFunction (\_ serverItem -> serverItem)
+
 -- | Serve an 'ValueSyncRequest' using the current 'ServerValue', producing an 'ValueSyncResponse' and a new 'ServerValue'.
 processServerValueSync ::
      ServerValue a -> ValueSyncRequest a -> (ValueSyncResponse a, ServerValue a)
-processServerValueSync sv@(ServerValue (Timed si st)) sr =
+processServerValueSync sv@(ServerValue t@(Timed _ st)) sr =
   case sr of
     ValueSyncRequestKnown ct ->
       if ct >= st
@@ -288,17 +323,17 @@ processServerValueSync sv@(ServerValue (Timed si st)) sr =
                 -- Since the client indicates that the item was not modified at their side,
                 -- we can just send it back to the client to have them update their version.
                 -- No conflict here.
-        else (ValueSyncResponseServerChanged (Timed {timedValue = si, timedTime = st}), sv)
+        else (ValueSyncResponseServerChanged t, sv)
     ValueSyncRequestKnownButChanged (Timed {timedValue = ci, timedTime = ct}) ->
       if ct >= st
                 -- The client time is equal to the server time.
                 -- The client indicates that the item *was* modified at their side.
                 -- This means that the server needs to be updated.
-        then let t = incrementServerTime st
-              in ( ValueSyncResponseClientChanged t
-                 , ServerValue (Timed {timedValue = ci, timedTime = t}))
+        then let st' = incrementServerTime st
+              in ( ValueSyncResponseClientChanged st'
+                 , ServerValue (Timed {timedValue = ci, timedTime = st'}))
                 -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item *was* modified at their side,
                 -- there is a conflict.
-        else (ValueSyncResponseConflict si, sv)
+        else (ValueSyncResponseConflict t, sv)
