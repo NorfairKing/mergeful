@@ -81,7 +81,7 @@ spec = do
                   , "error:"
                   , err
                   ]
-  describe "processServerSync" $ do
+  describe "processServerSync with mergeSyncResponseIgnoreProblems" $ do
     it "produces valid tuples of a response and a store" $
       producesValidsOnValids2
         (\store request ->
@@ -269,7 +269,7 @@ spec = do
                   lift $ do
                     resp1 `shouldBe`
                       (emptySyncResponse {syncResponseClientDeleted = S.singleton uuid})
-                    sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty}) -- TODO will probably need some sort of tombstoning.
+                    sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty})
                   -- Client A merges the response
                   let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
                   lift $ cAstore2 `shouldBe` initialClientStore
@@ -287,6 +287,61 @@ spec = do
                     cBstore2 `shouldBe` initialClientStore
                     -- Client A and Client B now have the same store
                     cAstore2 `shouldBe` cBstore2
+        it "does not lose data after a conflict occurs" $
+          forAllValid $ \uuid ->
+            forAllValid $ \time1 ->
+              forAllValid $ \i1 ->
+                forAllValid $ \i2 ->
+                  forAllValid $ \i3 ->
+                    evalDM $ do
+                      let sstore1 =
+                            ServerStore
+                              { serverStoreItems =
+                                  M.singleton (uuid :: UUID Int) (Timed (i1 :: Int) time1)
+                              }
+                      -- The server has an item
+                      -- The first client has synced it, and modified it.
+                      let cAstore1 =
+                            initialClientStore
+                              {clientStoreSyncedButChangedItems = M.singleton uuid (Timed i2 time1)}
+                      -- The second client has synced it too, and modified it too.
+                      let cBstore1 =
+                            initialClientStore
+                              {clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)}
+                      -- Client A makes sync request 1
+                      let req1 = makeSyncRequest cAstore1
+                      -- The server processes sync request 1
+                      (resp1, sstore2) <- processServerSync genD sstore1 req1
+                      let time2 = incrementServerTime time1
+                      -- The server updates the item accordingly
+                      lift $ do
+                        resp1 `shouldBe`
+                          (emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2})
+                        sstore2 `shouldBe`
+                          (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
+                      -- Client A merges the response
+                      let cAstore2 = mergeSyncResponseIgnoreProblems cAstore1 resp1
+                      lift $
+                        cAstore2 `shouldBe`
+                        (initialClientStore
+                           {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
+                      -- Client B makes sync request 2
+                      let req2 = makeSyncRequest cBstore1
+                      -- The server processes sync request 2
+                      (resp2, sstore3) <- processServerSync genD sstore2 req2
+                      -- The server reports a conflict and does not change its store
+                      lift $ do
+                        resp2 `shouldBe`
+                          (emptySyncResponse {syncResponseConflicts = M.singleton uuid i2})
+                        sstore3 `shouldBe` sstore2
+                      -- Client B merges the response
+                      let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2
+                      -- Client does not update, but keeps its conflict
+                      lift $ do
+                        cBstore2 `shouldBe`
+                          (initialClientStore
+                             {clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)})
+                      -- Client A and Client B now *do not* have the same store
       describe "Multiple items" $ do
         it "successfully syncs additions accross to a second client" $
           forAllValid $ \is ->

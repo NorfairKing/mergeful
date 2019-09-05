@@ -362,6 +362,9 @@ makeSyncRequest ClientStore {..} =
 -- This function ignores any problems that may occur.
 -- In the case of a conclict, it will just not update the client item.
 -- The next sync request will then produce a conflict again.
+--
+-- Pro: No data will be lost
+-- Con: Clients will diverge when conflicts occur.
 mergeSyncResponseIgnoreProblems :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
