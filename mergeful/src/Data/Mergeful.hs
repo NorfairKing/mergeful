@@ -41,6 +41,7 @@ module Data.Mergeful
   , initialSyncRequest
   , makeSyncRequest
   , mergeSyncResponseIgnoreProblems
+  , mergeSyncResponseFromServer
   -- * Server side
   , initialServerStore
   , processServerSync
@@ -364,7 +365,8 @@ makeSyncRequest ClientStore {..} =
 -- The next sync request will then produce a conflict again.
 --
 -- Pro: No data will be lost
--- Con: Clients will diverge when conflicts occur.
+--
+-- __Con: Clients will diverge when conflicts occur.__
 mergeSyncResponseIgnoreProblems :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
@@ -378,6 +380,37 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
           [ newSyncedItems
           , syncResponseServerAdded
           , syncResponseServerChanged
+          , newModifiedItems
+          , clientStoreSyncedItems cs
+          ]
+   in ClientStore
+        { clientStoreAddedItems = addedItemsLeftovers
+        , clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced
+        , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
+        , clientStoreSyncedItems =
+            synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
+        }
+
+-- | Merge an 'SyncResponse' into the current 'ClientStore' by taking whatever the server gave the client.
+--
+-- Pro: Clients will converge on the same value.
+--
+-- __Con: Conflicting updates will be lost.__
+mergeSyncResponseFromServer :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
+mergeSyncResponseFromServer cs SyncResponse {..} =
+  let (addedItemsLeftovers, newSyncedItems) =
+        mergeAddedItems (clientStoreAddedItems cs) syncResponseClientAdded
+      (syncedButNotChangedLeftovers, newModifiedItems) =
+        mergeSyncedButChangedItems (clientStoreSyncedButChangedItems cs) syncResponseClientChanged
+      deletedItemsLeftovers =
+        mergeDeletedItems (clientStoreDeletedItems cs) syncResponseClientDeleted
+      synced =
+        M.unions
+          [ newSyncedItems
+          , syncResponseServerAdded
+          , syncResponseServerChanged
+          , syncResponseConflicts
+          , syncResponseConflictsClientDeleted
           , newModifiedItems
           , clientStoreSyncedItems cs
           ]
