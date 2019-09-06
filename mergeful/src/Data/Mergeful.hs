@@ -261,12 +261,12 @@ data SyncResponse i a =
       -- ^ These items were deleted on the server side
       --
       -- The client should delete them too
-    , syncResponseConflicts :: Map i a
+    , syncResponseConflicts :: Map i (Timed a)
       -- ^ These are conflicts where the server and the client both have an item, but it is different.
       --
       -- The server kept its part of each, the client can either take whatever the server gave them
       -- or deal with the conflicts somehow, and then try to re-sync.
-    , syncResponseConflictsClientDeleted :: Map i a
+    , syncResponseConflictsClientDeleted :: Map i (Timed a)
       -- ^ These are conflicts where the server has an item but the client does not.
       --
       -- The server kept its item, the client can either take whatever the server gave them

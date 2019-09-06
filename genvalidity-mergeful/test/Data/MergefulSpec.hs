@@ -332,7 +332,7 @@ spec = do
                       -- The server reports a conflict and does not change its store
                       lift $ do
                         resp2 `shouldBe`
-                          (emptySyncResponse {syncResponseConflicts = M.singleton uuid i2})
+                          (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed i2 time2)})
                         sstore3 `shouldBe` sstore2
                       -- Client B merges the response
                       let cBstore2 = mergeSyncResponseIgnoreProblems cBstore1 resp2

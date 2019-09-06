@@ -46,7 +46,10 @@ module Data.Mergeful.Item
   , mergeItemSyncResponseRaw
   , ItemMergeResult(..)
   , mergeItemSyncResponseIgnoreProblems
-  , ignoreMergeProblems
+  , mergeIgnoringProblems
+  , mergeFromServer
+  , ItemMergeStrategy(..)
+  , mergeUsingStrategy
     -- * Server side
   , initialServerItem
   , processServerItemSync
@@ -224,13 +227,13 @@ data ItemSyncResponse a
   -- The server and the client both have an item, but it is different.
   -- The server kept its part, the client can either take whatever the server gave them
   -- or deal with the conflict somehow, and then try to re-sync.
-  | ItemSyncResponseConflict !a -- ^ The item at the server side
+  | ItemSyncResponseConflict !(Timed a) -- ^ The item at the server side
   -- | A conflict occurred.
   --
   -- The server has an item but the client does not.
   -- The server kept its part, the client can either take whatever the server gave them
   -- or deal with the conflict somehow, and then try to re-sync.
-  | ItemSyncResponseConflictClientDeleted !a -- ^ The item at the server side
+  | ItemSyncResponseConflictClientDeleted !(Timed a) -- ^ The item at the server side
   -- | A conflict occurred.
   --
   -- The client has a (modified) item but the server does not have any item.
@@ -298,9 +301,9 @@ data ItemMergeResult a
   -- | There was a merge conflict. The server and client had different, conflicting versions.
   | MergeConflict
       !a -- ^ The item at the client side
-      !a -- ^ The item at the server side
+      !(Timed a) -- ^ The item at the server side
   -- | There was a merge conflict. The client had deleted the item while the server had modified it.
-  | MergeConflictClientDeleted !a -- ^ The item at the server side
+  | MergeConflictClientDeleted !(Timed a) -- ^ The item at the server side
   -- | There was a merge conflict. The server had deleted the item while the client had modified it.
   | MergeConflictServerDeleted !a -- ^ The item at the client side
   -- | The server responded with a response that did not make sense given the client's request.
@@ -352,21 +355,75 @@ mergeItemSyncResponseRaw cs sr =
 -- In the case of a conclict, it will just not update the client item.
 -- The next sync request will then produce a conflict again.
 --
--- > mergeItemSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeItemSyncResponseRaw cs
+-- > mergeItemSyncResponseIgnoreProblems cs = mergeIgnoringProblems cs . mergeItemSyncResponseRaw cs
 mergeItemSyncResponseIgnoreProblems :: ClientItem a -> ItemSyncResponse a -> ClientItem a
-mergeItemSyncResponseIgnoreProblems cs = ignoreMergeProblems cs . mergeItemSyncResponseRaw cs
+mergeItemSyncResponseIgnoreProblems cs = mergeIgnoringProblems cs . mergeItemSyncResponseRaw cs
+
+data ItemMergeStrategy a =
+  ItemMergeStrategy
+    { itemMergeStrategyMergeChangeConflict :: a -> Timed a -> Timed a
+    , itemMergeStrategyMergeClientDeletedConflict :: Timed a -> Maybe (Timed a)
+    , itemMergeStrategyMergeServerDeletedConflict :: a -> Maybe a
+    }
+  deriving (Generic)
 
 -- | Ignore any merge problems in a 'ItemMergeResult'.
 --
 -- This function just returns the original 'ClientItem' if anything other than 'MergeSuccess' occurs.
-ignoreMergeProblems :: ClientItem a -> ItemMergeResult a -> ClientItem a
-ignoreMergeProblems cs mr =
+--
+-- This function ignores any problems that may occur.
+-- In the case of a conclict, it will just not update the client item.
+-- The next sync request will then produce a conflict again.
+--
+-- Pro: does not lose data
+--
+-- __Con: Clients will diverge when a conflict occurs__
+mergeIgnoringProblems :: ClientItem a -> ItemMergeResult a -> ClientItem a
+mergeIgnoringProblems cs mr =
   case mr of
     MergeSuccess cs' -> cs'
     MergeConflict _ _ -> cs
     MergeConflictServerDeleted _ -> cs
     MergeConflictClientDeleted _ -> cs
     MergeMismatch -> cs
+
+-- | Resolve an 'ItemMergeResult' using a given merge strategy.
+--
+-- This function ignores 'MergeMismatch' and will just return the original 'ClientItem' in that case.
+--
+-- In order for clients to converge on the same item correctly, this function must be:
+--
+-- * Associative
+-- * Idempotent
+-- * The same on all clients
+mergeUsingStrategy :: ItemMergeStrategy a -> ClientItem a -> ItemMergeResult a -> ClientItem a
+mergeUsingStrategy ItemMergeStrategy {..} cs mr =
+  case mr of
+    MergeSuccess cs' -> cs'
+    MergeConflict a1 a2 -> ClientItemSynced $ itemMergeStrategyMergeChangeConflict a1 a2
+    MergeConflictClientDeleted sa ->
+      case itemMergeStrategyMergeClientDeletedConflict sa of
+        Nothing -> ClientEmpty
+        Just t -> ClientItemSynced t
+    MergeConflictServerDeleted ca ->
+      case itemMergeStrategyMergeServerDeletedConflict ca of
+        Nothing -> ClientEmpty
+        Just a -> ClientAdded a
+    MergeMismatch -> cs
+
+-- | Resolve an 'ItemMergeResult' by taking whatever the server gave the client.
+--
+-- Pro: Clients will converge on the same value.
+--
+-- __Con: Conflicting updates will be lost.__
+mergeFromServer :: ClientItem a -> ItemMergeResult a -> ClientItem a
+mergeFromServer =
+  mergeUsingStrategy
+    ItemMergeStrategy
+      { itemMergeStrategyMergeChangeConflict = \_ serverItem -> serverItem
+      , itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem
+      , itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
+      }
 
 -- | Serve an 'ItemSyncRequest' using the current 'ServerItem', producing an 'ItemSyncResponse' and a new 'ServerItem'.
 processServerItemSync :: ServerItem a -> ItemSyncRequest a -> (ItemSyncResponse a, ServerItem a)
@@ -401,8 +458,8 @@ processServerItemSync store sr =
              -- That's fine, it will just remain deleted.
              -- No conflict here
              -> (ItemSyncResponseClientDeleted, store)
-    ServerFull (Timed si st) ->
-      let t = incrementServerTime st
+    ServerFull t@(Timed si st) ->
+      let st' = incrementServerTime st
        in case sr of
             ItemSyncRequestPoll
               -- The client is empty but the server is not.
@@ -415,7 +472,7 @@ processServerItemSync store sr =
               -- This indicates a conflict.
               -- The server is always right, so the item at the server will remain unmodified.
               -- The client will receive the conflict.
-             -> (ItemSyncResponseConflict si, store)
+             -> (ItemSyncResponseConflict t, store)
             ItemSyncRequestKnown ct ->
               if ct >= st
                 -- The client time is equal to the server time.
@@ -436,13 +493,13 @@ processServerItemSync store sr =
                 -- The client time is equal to the server time.
                 -- The client indicates that the item *was* modified at their side.
                 -- This means that the server needs to be updated.
-                then ( ItemSyncResponseClientChanged t
-                     , ServerFull (Timed {timedValue = ci, timedTime = t}))
+                then ( ItemSyncResponseClientChanged st'
+                     , ServerFull (Timed {timedValue = ci, timedTime = st'}))
                 -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item *was* modified at their side,
                 -- there is a conflict.
-                else (ItemSyncResponseConflict si, store)
+                else (ItemSyncResponseConflict t, store)
             ItemSyncRequestDeletedLocally ct ->
               if ct >= st
                 -- The client time is equal to the server time.
@@ -453,4 +510,4 @@ processServerItemSync store sr =
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item was deleted at their side,
                 -- there is a conflict.
-                else (ItemSyncResponseConflictClientDeleted si, store)
+                else (ItemSyncResponseConflictClientDeleted t, store)

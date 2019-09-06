@@ -45,8 +45,8 @@ module Data.Mergeful.Value
   , ValueMergeResult(..)
   , mergeValueSyncResponseIgnoreProblems
   , mergeIgnoringProblems
-  , mergeUsingFunction
   , mergeFromServer
+  , mergeUsingFunction
     -- * Server side
   , initialServerValue
   , processServerValueSync
@@ -252,7 +252,7 @@ mergeValueSyncResponseRaw cv@(ClientValue ct cf) sr =
         ValueSyncResponseConflict si -> MergeConflict (timedValue ct) si
         _ -> MergeMismatch
 
--- | Merge an 'ValueSyncResponse' into the current 'ClientValue'.
+-- | Resolve a 'ValueSyncResponse' into the current 'ClientValue'.
 --
 -- This function ignores any problems that may occur.
 -- In the case of a conclict, it will just not update the client item.

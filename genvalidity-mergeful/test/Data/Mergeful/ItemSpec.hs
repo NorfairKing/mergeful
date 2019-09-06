@@ -12,7 +12,6 @@ import Test.Validity.Aeson
 import Data.Mergeful.Item
 import Data.Mergeful.Timed
 
-
 import Data.GenValidity.Mergeful.Item ()
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
@@ -115,7 +114,7 @@ spec = do
                   req = ItemSyncRequestKnownButChanged (Timed j st)
               let (resp, store2) = processServerItemSync @Int store1 req
               store2 `shouldBe` store1
-              resp `shouldBe` ItemSyncResponseConflict i
+              resp `shouldBe` ItemSyncResponseConflict (Timed i st')
       it
         "notices a server-deleted-conflict if the client has a deleted item and server has a modified item" $
         forAllValid $ \i ->
@@ -124,7 +123,7 @@ spec = do
                 req = ItemSyncRequestDeletedLocally st
             let (resp, store2) = processServerItemSync @Int store1 req
             store2 `shouldBe` store1
-            resp `shouldBe` ItemSyncResponseConflictClientDeleted i
+            resp `shouldBe` ItemSyncResponseConflictClientDeleted (Timed i st')
       it
         "notices a server-deleted-conflict if the client has a modified item and server has no item" $
         forAllValid $ \i ->
