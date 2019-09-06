@@ -417,10 +417,14 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
           [ newSyncedItems
           , syncResponseServerAdded
           , syncResponseServerChanged
+          -- Merge the synced but changed (the only ones that could have caused a conflict)
+          -- with the ones that the response indicated were a conflict.
           , M.intersectionWith
               itemMergeStrategyMergeChangeConflict
               (M.map timedValue $ clientStoreSyncedButChangedItems cs)
               syncResponseConflicts
+          -- Of the items that the server changed but the client deleted,
+          -- keep the ones that the strategy wants to keep.
           , M.mapMaybe id $
             M.intersectionWith
               (\_ t -> itemMergeStrategyMergeClientDeletedConflict t)
@@ -429,12 +433,14 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
           , newModifiedItems
           , clientStoreSyncedItems cs
           ]
+      -- | The synced but changed items that were not acknowledged as changed,
+      -- minus the ones that the strategy decided to delete.
+      newSyncedButChangedItems =
+        syncedButNotChangedLeftovers `M.difference`
+        M.fromSet (const ()) syncResponseConflictsServerDeleted
    in ClientStore
         { clientStoreAddedItems = addedItemsLeftovers
-        , clientStoreSyncedButChangedItems =
-            (syncedButNotChangedLeftovers `M.difference`
-             M.fromSet (const ()) syncResponseConflictsServerDeleted) `M.difference`
-            synced
+        , clientStoreSyncedButChangedItems = newSyncedButChangedItems `M.difference` synced
         , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
         , clientStoreSyncedItems =
             synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
@@ -454,6 +460,7 @@ mergeSyncResponseFromServer =
       , itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
       }
 
+-- | Merge the local added items with the ones that the server has acknowledged as added.
 mergeAddedItems ::
      forall i a. Ord i
   => Map ClientId a
@@ -467,6 +474,7 @@ mergeAddedItems local added = M.foldlWithKey go (M.empty, M.empty) local
         Nothing -> (M.insert i a as, m)
         Just (k, st) -> (as, M.insert k (Timed {timedValue = a, timedTime = st}) m)
 
+-- | Merge the local synced but changed items with the ones that the server has acknowledged as changed.
 mergeSyncedButChangedItems ::
      forall i a. Ord i
   => Map i (Timed a)
@@ -480,6 +488,7 @@ mergeSyncedButChangedItems local changed = M.foldlWithKey go (M.empty, M.empty) 
         Nothing -> (M.insert k t m1, m2)
         Just st' -> (m1, M.insert k (t {timedTime = st'}) m2)
 
+-- | Merge the local deleted items with the ones that the server has acknowledged as deleted.
 mergeDeletedItems :: Ord i => Map i b -> Set i -> (Map i b)
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 
@@ -579,6 +588,8 @@ produceSyncResults allResults
       -- return them both.
    in (resp, ServerStore newStore)
 
+-- | Given an incomplete 'SyncResponse', an id, possibly a client ID too, and
+-- an 'ItemSyncResponse', produce a less incomplete 'SyncResponse'.
 addToSyncResponse ::
      Ord i => SyncResponse i a -> Identifier i -> ItemSyncResponse a -> SyncResponse i a
 addToSyncResponse sr cid isr =
