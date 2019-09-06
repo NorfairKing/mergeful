@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Data.MergefulSpec
   ( spec
@@ -84,18 +85,28 @@ spec = do
   describe "mergeSyncResponseFromServer" $ do
     it "only differs from mergeSyncResponseIgnoreProblems on conflicts" $
       forAllValid $ \cstore ->
-        forAllValid $ \sresp -> do
+        forAllValid $ \sresp@SyncResponse {..} -> do
           let cstoreA = mergeSyncResponseFromServer (cstore :: ClientStore (UUID Int) Int) sresp
               cstoreB = mergeSyncResponseIgnoreProblems cstore sresp
           if cstoreA == cstoreB
             then pure ()
             else unless
                    (or
-                      [ not (M.null (syncResponseConflicts sresp))
-                      , not (M.null (syncResponseConflictsClientDeleted sresp))
-                      , not (S.null (syncResponseConflictsServerDeleted sresp))
-                      ])
-                   (expectationFailure "Something went wrong")
+                      [ not (M.null syncResponseConflicts)
+                      , not (M.null syncResponseConflictsClientDeleted)
+                      , not (S.null syncResponseConflictsServerDeleted)
+                      ]) $
+                 expectationFailure $
+                 unlines
+                   [ "There was a difference between mergeSyncResponseFromServer and mergeSyncResponseIgnoreProblems that was somehow unrelated to the conflicts:"
+                   , "syncResponseConflicts:"
+                   , ppShow syncResponseConflicts
+                   , "syncResponseConflictsClientDeleted:"
+                   , ppShow syncResponseConflictsClientDeleted
+                   , "syncResponseConflictsServerDeleted:"
+                   , ppShow syncResponseConflictsServerDeleted
+                   , "client store after mergeSyncResponseFromServer:", ppShow cstoreA, "client store after mergeSyncResponseIgnoreProblems:", ppShow cstoreB
+                   ]
   describe "processServerSync with mergeSyncResponseIgnoreProblems" $ do
     it "produces valid tuples of a response and a store" $
       producesValidsOnValids2

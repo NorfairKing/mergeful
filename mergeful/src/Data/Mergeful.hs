@@ -42,6 +42,9 @@ module Data.Mergeful
   , makeSyncRequest
   , mergeSyncResponseIgnoreProblems
   , mergeSyncResponseFromServer
+  -- * Custom merging
+  , ItemMergeStrategy(..)
+  , mergeSyncResponseUsingStrategy
   -- * Server side
   , initialServerStore
   , processServerSync
@@ -391,13 +394,18 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
             synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
         }
 
--- | Merge an 'SyncResponse' into the current 'ClientStore' by taking whatever the server gave the client.
+-- | Merge an 'SyncResponse' into the current 'ClientStore' with the given merge strategy.
 --
--- Pro: Clients will converge on the same value.
+-- In order for clients to converge on the same collection correctly, this function must be:
 --
--- __Con: Conflicting updates will be lost.__
-mergeSyncResponseFromServer :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
-mergeSyncResponseFromServer cs SyncResponse {..} =
+-- * Associative
+-- * Idempotent
+-- * The same on all clients
+--
+-- This function ignores mismatches.
+mergeSyncResponseUsingStrategy ::
+     Ord i => ItemMergeStrategy a -> ClientStore i a -> SyncResponse i a -> ClientStore i a
+mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
         mergeAddedItems (clientStoreAddedItems cs) syncResponseClientAdded
       (syncedButNotChangedLeftovers, newModifiedItems) =
@@ -409,18 +417,42 @@ mergeSyncResponseFromServer cs SyncResponse {..} =
           [ newSyncedItems
           , syncResponseServerAdded
           , syncResponseServerChanged
-          , syncResponseConflicts
-          , syncResponseConflictsClientDeleted
+          , M.intersectionWith
+              itemMergeStrategyMergeChangeConflict
+              (M.map timedValue $ clientStoreSyncedButChangedItems cs)
+              syncResponseConflicts
+          , M.mapMaybe id $
+            M.intersectionWith
+              (\_ t -> itemMergeStrategyMergeClientDeletedConflict t)
+              (clientStoreDeletedItems cs)
+              syncResponseConflictsClientDeleted
           , newModifiedItems
           , clientStoreSyncedItems cs
           ]
    in ClientStore
         { clientStoreAddedItems = addedItemsLeftovers
-        , clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced
+        , clientStoreSyncedButChangedItems =
+            (syncedButNotChangedLeftovers `M.difference`
+             M.fromSet (const ()) syncResponseConflictsServerDeleted) `M.difference`
+            synced
         , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
         , clientStoreSyncedItems =
             synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
         }
+
+-- | Merge an 'SyncResponse' into the current 'ClientStore' by taking whatever the server gave the client.
+--
+-- Pro: Clients will converge on the same value.
+--
+-- __Con: Conflicting updates will be lost.__
+mergeSyncResponseFromServer :: Ord i => ClientStore i a -> SyncResponse i a -> ClientStore i a
+mergeSyncResponseFromServer =
+  mergeSyncResponseUsingStrategy
+    ItemMergeStrategy
+      { itemMergeStrategyMergeChangeConflict = \_ serverItem -> serverItem
+      , itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem
+      , itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
+      }
 
 mergeAddedItems ::
      forall i a. Ord i
