@@ -359,11 +359,15 @@ mergeItemSyncResponseRaw cs sr =
 mergeItemSyncResponseIgnoreProblems :: ClientItem a -> ItemSyncResponse a -> ClientItem a
 mergeItemSyncResponseIgnoreProblems cs = mergeIgnoringProblems cs . mergeItemSyncResponseRaw cs
 
+-- | A strategy to merge conflicts for item synchronisation
 data ItemMergeStrategy a =
   ItemMergeStrategy
     { itemMergeStrategyMergeChangeConflict :: a -> Timed a -> Timed a
+      -- ^ How to merge modification conflicts
     , itemMergeStrategyMergeClientDeletedConflict :: Timed a -> Maybe (Timed a)
+      -- ^ How to merge conflicts where the client deleted an item that the server modified
     , itemMergeStrategyMergeServerDeletedConflict :: a -> Maybe a
+      -- ^ How to merge conflicts where the server deleted an item that the client modified
     }
   deriving (Generic)
 
