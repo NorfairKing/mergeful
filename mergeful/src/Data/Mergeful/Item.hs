@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -300,9 +299,7 @@ data ItemMergeResult a
   -- | The merger went succesfully, no conflicts or desyncs
   = MergeSuccess !(ClientItem a)
   -- | There was a merge conflict. The server and client had different, conflicting versions.
-  | MergeConflict
-      !a -- ^ The item at the client side
-      !(Timed a) -- ^ The item at the server side
+  | MergeConflict !a !(Timed a) -- ^ The item at the server side
   -- | There was a merge conflict. The client had deleted the item while the server had modified it.
   | MergeConflictClientDeleted !(Timed a) -- ^ The item at the server side
   -- | There was a merge conflict. The server had deleted the item while the client had modified it.

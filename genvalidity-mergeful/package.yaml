@@ -39,12 +39,11 @@ tests:
       - genvalidity-hspec
       - genvalidity-hspec-aeson
       - genvalidity-mergeful
-      - genvalidity-typed-uuid
+      - genvalidity-uuid
       - hspec
       - mergeful
       - mtl
       - pretty-show
       - random
       - time
-      - typed-uuid
       - uuid

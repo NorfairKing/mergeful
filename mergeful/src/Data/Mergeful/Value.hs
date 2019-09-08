@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -222,9 +221,7 @@ data ValueMergeResult a
   -- | The merger went succesfully, no conflicts or desyncs
   = MergeSuccess !(ClientValue a)
   -- | There was a merge conflict. The server and client had different, conflicting versions.
-  | MergeConflict
-      !a -- ^ The item at the client side
-      !(Timed a) -- ^ The item at the server side
+  | MergeConflict !a !(Timed a) -- ^ The item at the server side
   | MergeMismatch
   -- ^ The server responded with a response that did not make sense given the client's request.
   --

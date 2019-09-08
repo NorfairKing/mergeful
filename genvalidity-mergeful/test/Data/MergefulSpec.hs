@@ -12,7 +12,7 @@ import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.UUID.Typed as Typed
+import Data.UUID
 import GHC.Generics (Generic)
 import System.Random
 import Text.Show.Pretty
@@ -23,7 +23,7 @@ import Test.Hspec
 import Test.Validity
 import Test.Validity.Aeson
 
-import Data.GenValidity.UUID.Typed ()
+import Data.GenValidity.UUID ()
 
 import Data.Mergeful
 import Data.Mergeful.Timed
@@ -86,7 +86,7 @@ spec = do
     it "only differs from mergeSyncResponseIgnoreProblems on conflicts" $
       forAllValid $ \cstore ->
         forAllValid $ \sresp@SyncResponse {..} -> do
-          let cstoreA = mergeSyncResponseFromServer (cstore :: ClientStore (UUID Int) Int) sresp
+          let cstoreA = mergeSyncResponseFromServer (cstore :: ClientStore (UUID) Int) sresp
               cstoreB = mergeSyncResponseIgnoreProblems cstore sresp
           if cstoreA == cstoreB
             then pure ()
@@ -105,19 +105,21 @@ spec = do
                    , ppShow syncResponseConflictsClientDeleted
                    , "syncResponseConflictsServerDeleted:"
                    , ppShow syncResponseConflictsServerDeleted
-                   , "client store after mergeSyncResponseFromServer:", ppShow cstoreA, "client store after mergeSyncResponseIgnoreProblems:", ppShow cstoreB
+                   , "client store after mergeSyncResponseFromServer:"
+                   , ppShow cstoreA
+                   , "client store after mergeSyncResponseIgnoreProblems:"
+                   , ppShow cstoreB
                    ]
   describe "processServerSync with mergeSyncResponseIgnoreProblems" $ do
     it "produces valid tuples of a response and a store" $
       producesValidsOnValids2
-        (\store request ->
-           evalD $ processServerSync genD (store :: ServerStore (UUID Int) Int) request)
+        (\store request -> evalD $ processServerSync genD (store :: ServerStore (UUID) Int) request)
     describe "Single client" $ do
       describe "Multi-item" $ do
         it "succesfully downloads everything from the server for an empty client" $
           forAllValid $ \sstore1 ->
             evalDM $ do
-              let cstore1 = initialClientStore :: ClientStore (UUID Int) Int
+              let cstore1 = initialClientStore :: ClientStore (UUID) Int
               let req = makeSyncRequest cstore1
               (resp, sstore2) <- processServerSync genD sstore1 req
               let cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp
@@ -128,7 +130,7 @@ spec = do
           forAllValid $ \items ->
             evalDM $ do
               let cstore1 = initialClientStore {clientStoreAddedItems = items}
-              let sstore1 = initialServerStore :: ServerStore (UUID Int) Int
+              let sstore1 = initialServerStore :: ServerStore (UUID) Int
               let req = makeSyncRequest cstore1
               (resp, sstore2) <- processServerSync genD sstore1 req
               let cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp
@@ -140,7 +142,7 @@ spec = do
           forAllValid $ \cstore1 ->
             forAllValid $ \sstore1 ->
               evalDM $ do
-                let req1 = makeSyncRequest (cstore1 :: ClientStore (UUID Int) Int)
+                let req1 = makeSyncRequest (cstore1 :: ClientStore (UUID) Int)
                 (resp1, sstore2) <- processServerSync genD sstore1 req1
                 let cstore2 = mergeSyncResponseIgnoreProblems cstore1 resp1
                     req2 = makeSyncRequest cstore2
@@ -156,7 +158,7 @@ spec = do
             evalDM $ do
               let cAstore1 = initialClientStore {clientStoreAddedItems = M.singleton (ClientId 0) i}
               -- Client B is empty
-              let cBstore1 = initialClientStore :: ClientStore (UUID Int) Int
+              let cBstore1 = initialClientStore :: ClientStore (UUID) Int
               -- The server is empty
               let sstore1 = initialServerStore
               -- Client A makes sync request 1
@@ -195,7 +197,7 @@ spec = do
                     let cAstore1 =
                           initialClientStore
                             { clientStoreSyncedItems =
-                                M.singleton (uuid :: UUID Int) (Timed (i :: Int) time1)
+                                M.singleton (uuid :: UUID) (Timed (i :: Int) time1)
                             }
                     -- Client B had synced that same item, but has since modified it
                     let cBstore1 =
@@ -242,7 +244,7 @@ spec = do
                   let cAstore1 =
                         initialClientStore
                           { clientStoreSyncedItems =
-                              M.singleton (uuid :: UUID Int) (Timed (i :: Int) time1)
+                              M.singleton (uuid :: UUID) (Timed (i :: Int) time1)
                           }
                   -- Client A has a synced item.
                   -- Client B had synced that same item, but has since deleted it.
@@ -281,7 +283,7 @@ spec = do
                 evalDM $ do
                   let cAstore1 =
                         initialClientStore
-                          {clientStoreDeletedItems = M.singleton (uuid :: UUID Int) time1}
+                          {clientStoreDeletedItems = M.singleton (uuid :: UUID) time1}
                   -- Both client a and client b delete an item.
                   let cBstore1 =
                         initialClientStore {clientStoreDeletedItems = M.singleton uuid time1}
@@ -323,7 +325,7 @@ spec = do
                       let sstore1 =
                             ServerStore
                               { serverStoreItems =
-                                  M.singleton (uuid :: UUID Int) (Timed (i1 :: Int) time1)
+                                  M.singleton (uuid :: UUID) (Timed (i1 :: Int) time1)
                               }
                       -- The server has an item
                       -- The first client has synced it, and modified it.
@@ -375,7 +377,7 @@ spec = do
             evalDM $ do
               let cAstore1 = initialClientStore {clientStoreAddedItems = is}
               -- Client B is empty
-              let cBstore1 = initialClientStore :: ClientStore (UUID Int) Int
+              let cBstore1 = initialClientStore :: ClientStore (UUID) Int
               -- The server is empty
               let sstore1 = initialServerStore
               -- Client A makes sync request 1
@@ -405,7 +407,7 @@ spec = do
           forAllValid $ \items ->
             forAllValid $ \time1 ->
               evalDM $ do
-                let syncedItems = M.map (\i -> Timed i time1) (items :: Map (UUID Int) Int)
+                let syncedItems = M.map (\i -> Timed i time1) (items :: Map (UUID) Int)
                     itemTimes = M.map (const time1) items
                     itemIds = M.keysSet items
                 let cAstore1 = initialClientStore {clientStoreSyncedItems = syncedItems}
@@ -442,9 +444,7 @@ spec = do
               evalDM $ do
                 let cAstore1 =
                       initialClientStore
-                        { clientStoreDeletedItems =
-                            M.map (const time1) (items :: Map (UUID Int) Int)
-                        }
+                        {clientStoreDeletedItems = M.map (const time1) (items :: Map (UUID) Int)}
                 -- Both client a and client b delete their items.
                 let cBstore1 =
                       initialClientStore {clientStoreDeletedItems = M.map (const time1) items}
@@ -486,7 +486,7 @@ spec = do
                       let sstore1 =
                             ServerStore
                               { serverStoreItems =
-                                  M.singleton (uuid :: UUID Int) (Timed (i1 :: Int) time1)
+                                  M.singleton (uuid :: UUID) (Timed (i1 :: Int) time1)
                               }
                       -- The server has an item
                       -- The first client has synced it, and modified it.
@@ -551,7 +551,7 @@ evalDM d = fst <$> runDM d (mkStdGen 42)
 runDM :: D m a -> StdGen -> m (a, StdGen)
 runDM = runStateT . unD
 
-genD :: Monad m => D m (Typed.UUID a)
+genD :: Monad m => D m UUID
 genD = do
   r <- get
   let (u, r') = random r
