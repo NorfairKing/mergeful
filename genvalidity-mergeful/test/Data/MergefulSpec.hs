@@ -48,6 +48,12 @@ spec = do
   describe "initialClientStore" $ it "is valid" $ shouldBeValid $ initialClientStore @Int @Int
   describe "addItemToClientStore" $
     it "produces valid stores" $ producesValidsOnValids2 (addItemToClientStore @Int @Int)
+  describe "markItemDeletedInClientStore" $
+    it "produces valid stores" $ producesValidsOnValids2 (markItemDeletedInClientStore @Int @Int)
+  describe "changeItemInClientStore" $
+    it "produces valid stores" $ producesValidsOnValids3 (changeItemInClientStore @Int @Int)
+  describe "deleteItemFromClientStore" $
+    it "produces valid stores" $ producesValidsOnValids2 (deleteItemFromClientStore @Int @Int)
   describe "initialServerStore" $ it "is valid" $ shouldBeValid $ initialServerStore @Int @Int
   describe "initialSyncRequest" $ it "is valid" $ shouldBeValid $ initialSyncRequest @Int @Int
   describe "emptySyncResponse" $ it "is valid" $ shouldBeValid $ emptySyncResponse @Int @Int

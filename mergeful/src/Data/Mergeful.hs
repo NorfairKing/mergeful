@@ -39,6 +39,9 @@
 module Data.Mergeful
   ( initialClientStore
   , addItemToClientStore
+  , markItemDeletedInClientStore
+  , changeItemInClientStore
+  , deleteItemFromClientStore
   , initialSyncRequest
   , makeSyncRequest
   , mergeSyncResponseIgnoreProblems
@@ -66,7 +69,6 @@ module Data.Mergeful
 
 import GHC.Generics (Generic)
 
-import Control.Monad
 import Data.Aeson
 import Data.List
 import Data.Map (Map)
@@ -79,6 +81,9 @@ import Data.These
 import Data.Validity
 import Data.Validity.Containers ()
 import Data.Word
+
+import Control.Applicative
+import Control.Monad
 
 import Data.Mergeful.Item
 import Data.Mergeful.Timed
@@ -166,6 +171,54 @@ addItemToClientStore a cs =
                       in succ k
          in M.insert newKey a oldAddedItems
    in cs {clientStoreAddedItems = newAddedItems}
+
+-- | Mark an item deleted in a client store.
+--
+-- This function will not delete the item, but mark it as deleted instead.
+markItemDeletedInClientStore :: Ord i => i -> ClientStore i a -> ClientStore i a
+markItemDeletedInClientStore u cs =
+  let oldSyncedItems = clientStoreSyncedItems cs
+      oldChangedItems = clientStoreSyncedButChangedItems cs
+      oldDeletedItems = clientStoreDeletedItems cs
+      mItem = M.lookup u oldSyncedItems <|> M.lookup u oldChangedItems
+   in case mItem of
+        Nothing -> cs
+        Just t ->
+          let newSyncedItems = M.delete u oldSyncedItems
+              newChangedItems = M.delete u oldChangedItems
+              newDeletedItems = M.insert u (timedTime t) oldDeletedItems
+           in cs
+                { clientStoreSyncedItems = newSyncedItems
+                , clientStoreSyncedButChangedItems = newChangedItems
+                , clientStoreDeletedItems = newDeletedItems
+                }
+
+-- | Replace the given item with a new value.
+--
+-- This function will correctly mark the item as changed, if it exist.
+--
+-- It will not add an item to the store with the given id, because the
+-- server may not have been the origin of that id.
+changeItemInClientStore :: Ord i => i -> a -> ClientStore i a -> ClientStore i a
+changeItemInClientStore u a cs =
+  case M.lookup u (clientStoreSyncedItems cs) of
+    Just _ ->
+      cs
+        { clientStoreSyncedItems = M.delete u (clientStoreSyncedItems cs)
+        , clientStoreSyncedButChangedItems =
+            M.adjust (\t -> t {timedValue = a}) u (clientStoreSyncedButChangedItems cs)
+        }
+    Nothing ->
+      case M.lookup u (clientStoreSyncedButChangedItems cs) of
+        Nothing -> cs
+        Just _ ->
+          cs {clientStoreSyncedButChangedItems = M.adjust (\t -> t {timedValue = a}) u (clientStoreSyncedButChangedItems cs)}
+
+-- | Delete an unsynced item from a client store.
+--
+-- This function will immediately delete the item, because it has never been synced.
+deleteItemFromClientStore :: ClientId -> ClientStore i a -> ClientStore i a
+deleteItemFromClientStore i cs = cs {clientStoreAddedItems = M.delete i (clientStoreAddedItems cs)}
 
 newtype ServerStore i a =
   ServerStore
