@@ -21,7 +21,6 @@ library:
     - containers
     - mtl
     - text
-    - these
     - time
     - validity
     - validity-containers

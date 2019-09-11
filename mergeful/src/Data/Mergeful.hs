@@ -77,7 +77,6 @@ import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
-import Data.These
 import Data.Validity
 import Data.Validity.Containers ()
 import Data.Word
@@ -212,7 +211,10 @@ changeItemInClientStore u a cs =
       case M.lookup u (clientStoreSyncedButChangedItems cs) of
         Nothing -> cs
         Just _ ->
-          cs {clientStoreSyncedButChangedItems = M.adjust (\t -> t {timedValue = a}) u (clientStoreSyncedButChangedItems cs)}
+          cs
+            { clientStoreSyncedButChangedItems =
+                M.adjust (\t -> t {timedValue = a}) u (clientStoreSyncedButChangedItems cs)
+            }
 
 -- | Delete an unsynced item from a client store.
 --
@@ -689,3 +691,17 @@ unionTheseMaps m1 m2 = M.unionWith go (M.map This m1) (M.map That m2)
 
 distinct :: Eq a => [a] -> Bool
 distinct ls = nub ls == ls
+
+-- Inlined because holy smokes, `these` has a _lot_ of dependencies.
+data These a b
+  = This a
+  | That b
+  | These a b
+  deriving (Show, Eq, Generic)
+
+fromThese :: a -> b -> These a b -> (a, b)
+fromThese a b t =
+  case t of
+    This a' -> (a', b)
+    That b' -> (a, b')
+    These a' b' -> (a', b')
