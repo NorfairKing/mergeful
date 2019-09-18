@@ -1,0 +1,20 @@
+- ignore:
+    name: "Avoid lambda"
+    within:
+      - "Data.Mergeful.Collection.mergeSyncResponseFromServer"
+      - "Data.Mergeful.Item.mergeFromServer"
+      - "Data.MergefulSpec.spec"
+- ignore:
+    name: "Use ||"
+    within:
+      - "Data.MergefulSpec.spec"
+- ignore:
+    name: "Reduce duplication"
+    within:
+      - "Data.GenValidity.Mergeful"
+      - "Data.Mergeful.Collection.mergeSyncResponseIgnoreProblems"
+- ignore:
+    name: "Use const"
+    within:
+      - "Data.Mergeful.Collection.mergeSyncResponseFromServer"
+      - "Data.Mergeful.Item.mergeFromServer"

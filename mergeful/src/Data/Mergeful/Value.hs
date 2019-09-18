@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -114,8 +113,8 @@ initialClientValue t = ClientValue t NotChanged
 --
 -- The only difference between 'a' and 'ServerValue a' is that 'ServerValue a' also
 -- remembers the last time this value was changed during synchronisation.
-data ServerValue a =
-  ServerValue !(Timed a)
+newtype ServerValue a =
+  ServerValue (Timed a)
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ServerValue a)
@@ -322,7 +321,7 @@ processServerValueSync sv@(ServerValue t@(Timed _ st)) sr =
                 -- we can just send it back to the client to have them update their version.
                 -- No conflict here.
         else (ValueSyncResponseServerChanged t, sv)
-    ValueSyncRequestKnownButChanged (Timed {timedValue = ci, timedTime = ct}) ->
+    ValueSyncRequestKnownButChanged Timed {timedValue = ci, timedTime = ct} ->
       if ct >= st
                 -- The client time is equal to the server time.
                 -- The client indicates that the item *was* modified at their side.

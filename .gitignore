@@ -1,4 +1,5 @@
 .stack-work/
 *.cabal
+.pre-commit-hooks
 *~
 result*

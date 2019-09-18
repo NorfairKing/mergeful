@@ -1,7 +1,7 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -119,11 +119,11 @@ instance (Validity i, Ord i, Validity a) => Validity (ClientStore i a) where
       [ genericValidate cs
       , declare "There are no duplicate IDs" $
         distinct $
-        concat $
-        [ M.keys clientStoreSyncedItems
-        , M.keys clientStoreSyncedButChangedItems
-        , M.keys clientStoreDeletedItems
-        ]
+        concat
+          [ M.keys clientStoreSyncedItems
+          , M.keys clientStoreSyncedButChangedItems
+          , M.keys clientStoreDeletedItems
+          ]
       ]
 
 instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (ClientStore i a) where
@@ -136,12 +136,12 @@ instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (ClientStore i a) where
 instance (ToJSONKey i, ToJSON a) => ToJSON (ClientStore i a) where
   toJSON ClientStore {..} =
     object $
-    catMaybes $
-    [ jNull "added" clientStoreAddedItems
-    , jNull "synced" clientStoreSyncedItems
-    , jNull "changed" clientStoreSyncedButChangedItems
-    , jNull "deleted" clientStoreDeletedItems
-    ]
+    catMaybes
+      [ jNull "added" clientStoreAddedItems
+      , jNull "synced" clientStoreSyncedItems
+      , jNull "changed" clientStoreSyncedButChangedItems
+      , jNull "deleted" clientStoreDeletedItems
+      ]
 
 -- | A client store to start with.
 --
@@ -259,11 +259,11 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncRequest i a) where
       [ genericValidate sr
       , declare "There are no duplicate IDs" $
         distinct $
-        concat $
-        [ M.keys syncRequestKnownItems
-        , M.keys syncRequestKnownButChangedItems
-        , M.keys syncRequestDeletedItems
-        ]
+        concat
+          [ M.keys syncRequestKnownItems
+          , M.keys syncRequestKnownButChangedItems
+          , M.keys syncRequestDeletedItems
+          ]
       ]
 
 instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (SyncRequest i a) where
@@ -276,12 +276,12 @@ instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (SyncRequest i a) where
 instance (ToJSONKey i, ToJSON a) => ToJSON (SyncRequest i a) where
   toJSON SyncRequest {..} =
     object $
-    catMaybes $
-    [ jNull "new" syncRequestNewItems
-    , jNull "synced" syncRequestKnownItems
-    , jNull "changed" syncRequestKnownButChangedItems
-    , jNull "deleted" syncRequestDeletedItems
-    ]
+    catMaybes
+      [ jNull "new" syncRequestNewItems
+      , jNull "synced" syncRequestKnownItems
+      , jNull "changed" syncRequestKnownButChangedItems
+      , jNull "deleted" syncRequestDeletedItems
+      ]
 
 -- | An intial 'SyncRequest' to start with.
 --
@@ -345,17 +345,17 @@ instance (Validity i, Ord i, Validity a) => Validity (SyncResponse i a) where
       [ genericValidate sr
       , declare "There are no duplicate IDs" $
         distinct $
-        concat $
-        [ map (\(_, (i, _)) -> i) $ M.toList syncResponseClientAdded
-        , M.keys syncResponseClientChanged
-        , S.toList syncResponseClientDeleted
-        , M.keys syncResponseServerAdded
-        , M.keys syncResponseServerChanged
-        , S.toList syncResponseServerDeleted
-        , M.keys syncResponseConflicts
-        , M.keys syncResponseConflictsClientDeleted
-        , S.toList syncResponseConflictsServerDeleted
-        ]
+        concat
+          [ map (\(_, (i, _)) -> i) $ M.toList syncResponseClientAdded
+          , M.keys syncResponseClientChanged
+          , S.toList syncResponseClientDeleted
+          , M.keys syncResponseServerAdded
+          , M.keys syncResponseServerChanged
+          , S.toList syncResponseServerDeleted
+          , M.keys syncResponseConflicts
+          , M.keys syncResponseConflictsClientDeleted
+          , S.toList syncResponseConflictsServerDeleted
+          ]
       ]
 
 instance (Ord i, FromJSON i, FromJSONKey i, FromJSON a) => FromJSON (SyncResponse i a) where
@@ -373,17 +373,17 @@ instance (Ord i, FromJSON i, FromJSONKey i, FromJSON a) => FromJSON (SyncRespons
 instance (ToJSON i, ToJSONKey i, ToJSON a) => ToJSON (SyncResponse i a) where
   toJSON SyncResponse {..} =
     object $
-    catMaybes $
-    [ jNull "client-added" syncResponseClientAdded
-    , jNull "client-changed" syncResponseClientChanged
-    , jNull "client-deleted" syncResponseClientDeleted
-    , jNull "server-added" syncResponseServerAdded
-    , jNull "server-changed" syncResponseServerChanged
-    , jNull "server-deleted" syncResponseServerDeleted
-    , jNull "conflict" syncResponseConflicts
-    , jNull "conflict-client-deleted" syncResponseConflictsClientDeleted
-    , jNull "conflict-server-deleted" syncResponseConflictsServerDeleted
-    ]
+    catMaybes
+      [ jNull "client-added" syncResponseClientAdded
+      , jNull "client-changed" syncResponseClientChanged
+      , jNull "client-deleted" syncResponseClientDeleted
+      , jNull "server-added" syncResponseServerAdded
+      , jNull "server-changed" syncResponseServerChanged
+      , jNull "server-deleted" syncResponseServerDeleted
+      , jNull "conflict" syncResponseConflicts
+      , jNull "conflict-client-deleted" syncResponseConflictsClientDeleted
+      , jNull "conflict-server-deleted" syncResponseConflictsServerDeleted
+      ]
 
 emptySyncResponse :: SyncResponse i a
 emptySyncResponse =
@@ -447,7 +447,7 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
         , clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced
         , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
         , clientStoreSyncedItems =
-            synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
+            synced `M.difference` M.fromSet (const ()) syncResponseServerDeleted
         }
 
 -- | Merge an 'SyncResponse' into the current 'ClientStore' with the given merge strategy.
@@ -499,7 +499,7 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
         , clientStoreSyncedButChangedItems = newSyncedButChangedItems `M.difference` synced
         , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
         , clientStoreSyncedItems =
-            synced `M.difference` (M.fromSet (const ()) syncResponseServerDeleted)
+            synced `M.difference` M.fromSet (const ()) syncResponseServerDeleted
         }
 
 -- | Merge an 'SyncResponse' into the current 'ClientStore' by taking whatever the server gave the client.
@@ -545,7 +545,7 @@ mergeSyncedButChangedItems local changed = M.foldlWithKey go (M.empty, M.empty) 
         Just st' -> (m1, M.insert k (t {timedTime = st'}) m2)
 
 -- | Merge the local deleted items with the ones that the server has acknowledged as deleted.
-mergeDeletedItems :: Ord i => Map i b -> Set i -> (Map i b)
+mergeDeletedItems :: Ord i => Map i b -> Set i -> Map i b
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 
 data Identifier i
@@ -630,16 +630,14 @@ produceSyncResults allResults
       newStore :: Map i (Timed a)
       newStore =
         M.mapMaybe
-          (\si ->
-             case si of
-               ServerEmpty -> Nothing
-               ServerFull t -> Just t) $
+          (\case
+             ServerEmpty -> Nothing
+             ServerFull t -> Just t) $
         M.map snd $
         M.mapKeys
-          (\cid ->
-             case cid of
-               OnlyServer i -> i
-               BothServerAndClient i _ -> i)
+          (\case
+             OnlyServer i -> i
+             BothServerAndClient i _ -> i)
           allResults
       -- return them both.
    in (resp, ServerStore newStore)

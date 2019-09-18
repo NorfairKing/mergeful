@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -490,7 +489,7 @@ processServerItemSync store sr =
                 -- No conflict here.
                 else ( ItemSyncResponseServerChanged (Timed {timedValue = si, timedTime = st})
                      , store)
-            ItemSyncRequestKnownButChanged (Timed {timedValue = ci, timedTime = ct}) ->
+            ItemSyncRequestKnownButChanged Timed {timedValue = ci, timedTime = ct} ->
               if ct >= st
                 -- The client time is equal to the server time.
                 -- The client indicates that the item *was* modified at their side.
