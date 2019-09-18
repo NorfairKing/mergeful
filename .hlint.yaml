@@ -3,15 +3,15 @@
     within:
       - "Data.Mergeful.Collection.mergeSyncResponseFromServer"
       - "Data.Mergeful.Item.mergeFromServer"
-      - "Data.MergefulSpec.spec"
+      - "Data.Mergeful.CollectionSpec.spec"
 - ignore:
     name: "Use ||"
     within:
-      - "Data.MergefulSpec.spec"
+      - "Data.Mergeful.CollectionSpec.spec"
 - ignore:
     name: "Reduce duplication"
     within:
-      - "Data.GenValidity.Mergeful"
+      - "Data.GenValidity.Mergeful.Collection"
       - "Data.Mergeful.Collection.mergeSyncResponseIgnoreProblems"
 - ignore:
     name: "Use const"

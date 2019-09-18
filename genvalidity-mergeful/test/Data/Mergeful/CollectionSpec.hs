@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Data.MergefulSpec
+module Data.Mergeful.CollectionSpec
   ( spec
   ) where
 
