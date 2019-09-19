@@ -38,6 +38,11 @@
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful.Collection
   ( initialClientStore
+  , clientStoreSize
+  , clientStoreClientIdSet
+  , clientStoreUndeletedSyncIdSet
+  , clientStoreSyncIdSet
+  , clientStoreItems
   , addItemToClientStore
   , markItemDeletedInClientStore
   , changeItemInClientStore
@@ -155,6 +160,53 @@ initialClientStore =
     , clientStoreDeletedItems = M.empty
     }
 
+-- | The number of items in a client store
+--
+-- This does not count the deleted items, so that they really look deleted..
+clientStoreSize :: ClientStore i a -> Word
+clientStoreSize ClientStore {..} =
+  fromIntegral $
+  sum
+    [ M.size clientStoreAddedItems
+    , M.size clientStoreSyncedItems
+    , M.size clientStoreSyncedButChangedItems
+    ]
+
+-- | The set of client ids.
+--
+-- These are only the client ids of the added items that have not been synced yet.
+clientStoreClientIdSet :: ClientStore i a -> Set ClientId
+clientStoreClientIdSet ClientStore {..} = M.keysSet clientStoreAddedItems
+
+-- | The set of server ids.
+--
+-- This does not include the ids of items that have been marked as deleted.
+clientStoreUndeletedSyncIdSet :: Ord i => ClientStore i a -> Set i
+clientStoreUndeletedSyncIdSet ClientStore {..} =
+  S.unions [M.keysSet clientStoreSyncedItems, M.keysSet clientStoreSyncedButChangedItems]
+
+-- | The set of server ids.
+--
+-- This includes the ids of items that have been marked as deleted.
+clientStoreSyncIdSet :: Ord i => ClientStore i a -> Set i
+clientStoreSyncIdSet ClientStore {..} =
+  S.unions
+    [ M.keysSet clientStoreSyncedItems
+    , M.keysSet clientStoreSyncedButChangedItems
+    , M.keysSet clientStoreDeletedItems
+    ]
+
+-- | The set of items in the client store
+--
+-- This map does not include items that have been marked as deleted.
+clientStoreItems :: Ord i => ClientStore i a -> Map (Either ClientId i) a
+clientStoreItems ClientStore {..} =
+  M.unions
+    [ M.mapKeys Left clientStoreAddedItems
+    , M.mapKeys Right $ M.map timedValue clientStoreSyncedItems
+    , M.mapKeys Right $ M.map timedValue clientStoreSyncedButChangedItems
+    ]
+
 -- | Add an item to a client store as an added item.
 --
 -- This will take care of the uniqueness constraint of the 'ClientId's in the map.
@@ -199,21 +251,21 @@ markItemDeletedInClientStore u cs =
 -- It will not add an item to the store with the given id, because the
 -- server may not have been the origin of that id.
 changeItemInClientStore :: Ord i => i -> a -> ClientStore i a -> ClientStore i a
-changeItemInClientStore u a cs =
-  case M.lookup u (clientStoreSyncedItems cs) of
-    Just _ ->
+changeItemInClientStore i a cs =
+  case M.lookup i (clientStoreSyncedItems cs) of
+    Just t ->
       cs
-        { clientStoreSyncedItems = M.delete u (clientStoreSyncedItems cs)
+        { clientStoreSyncedItems = M.delete i (clientStoreSyncedItems cs)
         , clientStoreSyncedButChangedItems =
-            M.adjust (\t -> t {timedValue = a}) u (clientStoreSyncedButChangedItems cs)
+            M.insert i (t {timedValue = a}) (clientStoreSyncedButChangedItems cs)
         }
     Nothing ->
-      case M.lookup u (clientStoreSyncedButChangedItems cs) of
+      case M.lookup i (clientStoreSyncedButChangedItems cs) of
         Nothing -> cs
         Just _ ->
           cs
             { clientStoreSyncedButChangedItems =
-                M.adjust (\t -> t {timedValue = a}) u (clientStoreSyncedButChangedItems cs)
+                M.adjust (\t -> t {timedValue = a}) i (clientStoreSyncedButChangedItems cs)
             }
 
 -- | Delete an unsynced item from a client store.

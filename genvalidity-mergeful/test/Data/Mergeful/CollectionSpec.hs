@@ -21,6 +21,7 @@ import Text.Show.Pretty
 import Control.Monad.State
 
 import Test.Hspec
+import Test.QuickCheck
 import Test.Validity
 import Test.Validity.Aeson
 
@@ -47,14 +48,55 @@ spec = do
   genValidSpec @(SyncResponse Int Int)
   jsonSpecOnValid @(SyncResponse Int Int)
   describe "initialClientStore" $ it "is valid" $ shouldBeValid $ initialClientStore @Int @Int
-  describe "addItemToClientStore" $
+  describe "addItemToClientStore" $ do
     it "produces valid stores" $ producesValidsOnValids2 (addItemToClientStore @Int @Int)
-  describe "markItemDeletedInClientStore" $
+    it "makes the client store one bigger" $
+      forAllValid $ \cs ->
+        forAllValid $ \a ->
+          clientStoreSize @Int @Int (addItemToClientStore a cs) `shouldBe` (clientStoreSize cs + 1)
+    it "ensures that the added item is in fact in the result" $
+      forAllValid $ \cs ->
+        forAllValid $ \a ->
+          let cs' = addItemToClientStore @Int @Int a cs
+           in a `elem` clientStoreAddedItems cs'
+  describe "markItemDeletedInClientStore" $ do
     it "produces valid stores" $ producesValidsOnValids2 (markItemDeletedInClientStore @Int @Int)
-  describe "changeItemInClientStore" $
+    it "makes the client store one smaller" $
+      let p cs = S.size (clientStoreUndeletedSyncIdSet cs) > 0
+       in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
+            forAll (elements $ S.toList $ clientStoreUndeletedSyncIdSet cs) $ \i ->
+              (clientStoreSize @Int @Int (markItemDeletedInClientStore i cs) + 1) `shouldBe`
+              clientStoreSize cs
+    it "ensures that the added item is in fact not in the result" $
+      let p cs = S.size (clientStoreUndeletedSyncIdSet cs) > 0
+       in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
+            forAll (elements $ S.toList $ clientStoreUndeletedSyncIdSet cs) $ \i ->
+              let cs' = markItemDeletedInClientStore @Int @Int i cs
+               in M.lookup (Right i) (clientStoreItems cs') `shouldBe` Nothing
+  describe "changeItemInClientStore" $ do
     it "produces valid stores" $ producesValidsOnValids3 (changeItemInClientStore @Int @Int)
-  describe "deleteItemFromClientStore" $
+    it "doesn't change the size of the client store" $
+      let p cs = S.size (clientStoreUndeletedSyncIdSet cs) > 0
+       in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
+            forAll (elements $ S.toList $ clientStoreUndeletedSyncIdSet cs) $ \i ->
+              forAllValid $ \a ->
+                clientStoreSize @Int @Int (changeItemInClientStore i a cs) `shouldBe`
+                clientStoreSize cs
+    it "ensures that the changed item is in fact in the result" $
+      let p cs = S.size (clientStoreUndeletedSyncIdSet cs) > 0
+       in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
+            forAll (elements $ S.toList $ clientStoreUndeletedSyncIdSet cs) $ \i ->
+              forAllValid $ \a ->
+                let cs' = changeItemInClientStore @Int @Int i a cs
+                 in M.lookup (Right i) (clientStoreItems cs') `shouldBe` Just a
+  describe "deleteItemFromClientStore" $ do
     it "produces valid stores" $ producesValidsOnValids2 (deleteItemFromClientStore @Int @Int)
+    it "makes the client store one smaller" $
+      let p cs = S.size (clientStoreClientIdSet cs) > 0
+       in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
+            forAll (elements $ S.toList $ clientStoreClientIdSet cs) $ \cid ->
+              (clientStoreSize @Int @Int (deleteItemFromClientStore cid cs) + 1) `shouldBe`
+              clientStoreSize cs
   describe "initialServerStore" $ it "is valid" $ shouldBeValid $ initialServerStore @Int @Int
   describe "initialSyncRequest" $ it "is valid" $ shouldBeValid $ initialSyncRequest @Int @Int
   describe "emptySyncResponse" $ it "is valid" $ shouldBeValid $ emptySyncResponse @Int @Int
