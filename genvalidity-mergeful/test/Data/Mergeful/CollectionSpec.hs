@@ -10,7 +10,6 @@ module Data.Mergeful.CollectionSpec
 
 import Data.Functor.Identity
 import Data.List
-import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.UUID
