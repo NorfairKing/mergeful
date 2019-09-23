@@ -26,7 +26,7 @@ instance GenValid ClientId
 
 instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (ClientStore i a)
 
-instance (GenValid i, Ord i, GenValid a) => GenValid (ClientStore i a) where
+instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (ClientStore i a) where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- scale (* 3) genValid
@@ -41,13 +41,13 @@ instance (GenValid i, Ord i, GenValid a) => GenValid (ClientStore i a) where
 
 instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (ServerStore i a)
 
-instance (GenValid i, Ord i, GenValid a) => GenValid (ServerStore i a) where
+instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (ServerStore i a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
 instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (SyncRequest i a)
 
-instance (GenValid i, Ord i, GenValid a) => GenValid (SyncRequest i a) where
+instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncRequest i a) where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- scale (* 3) genValid
@@ -62,7 +62,7 @@ instance (GenValid i, Ord i, GenValid a) => GenValid (SyncRequest i a) where
 
 instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (SyncResponse i a)
 
-instance (GenValid i, Ord i, GenValid a) => GenValid (SyncResponse i a) where
+instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncResponse i a) where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- scale (* 10) genValid

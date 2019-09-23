@@ -118,7 +118,7 @@ data ClientStore i a =
     }
   deriving (Show, Eq, Generic)
 
-instance (Validity i, Ord i, Validity a) => Validity (ClientStore i a) where
+instance (Validity i, Show i, Ord i, Validity a) => Validity (ClientStore i a) where
   validate cs@ClientStore {..} =
     mconcat
       [ genericValidate cs
@@ -282,7 +282,7 @@ newtype ServerStore i a =
     }
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
-instance (Validity i, Ord i, Validity a) => Validity (ServerStore i a)
+instance (Validity i, Show i, Ord i, Validity a) => Validity (ServerStore i a)
 
 -- | A server store to start with
 --
@@ -305,7 +305,7 @@ data SyncRequest i a =
     }
   deriving (Show, Eq, Generic)
 
-instance (Validity i, Ord i, Validity a) => Validity (SyncRequest i a) where
+instance (Validity i, Show i, Ord i, Validity a) => Validity (SyncRequest i a) where
   validate sr@SyncRequest {..} =
     mconcat
       [ genericValidate sr
@@ -391,7 +391,7 @@ data SyncResponse i a =
     }
   deriving (Show, Eq, Generic)
 
-instance (Validity i, Ord i, Validity a) => Validity (SyncResponse i a) where
+instance (Validity i, Show i, Ord i, Validity a) => Validity (SyncResponse i a) where
   validate sr@SyncResponse {..} =
     mconcat
       [ genericValidate sr
