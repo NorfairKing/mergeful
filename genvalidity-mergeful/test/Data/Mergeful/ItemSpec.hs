@@ -82,7 +82,7 @@ spec = do
             store2 `shouldBe` ServerEmpty
             resp `shouldBe` ItemSyncResponseClientDeleted
     describe "Server changes" $ do
-      it "tells the client that there is a new item at the server side" $ do
+      it "tells the client that there is a new item at the server side" $
         forAllValid $ \i ->
           forAllValid $ \st -> do
             let store1 = ServerFull (Timed i st)
@@ -90,7 +90,7 @@ spec = do
             let (resp, store2) = processServerItemSync @Int store1 req
             store2 `shouldBe` store1
             resp `shouldBe` ItemSyncResponseServerAdded (Timed i st)
-      it "tells the client that there is a modified item at the server side" $ do
+      it "tells the client that there is a modified item at the server side" $
         forAllValid $ \i ->
           forAllSubsequent $ \(st, st') -> do
             let store1 = ServerFull (Timed i st')
@@ -98,7 +98,7 @@ spec = do
             let (resp, store2) = processServerItemSync @Int store1 req
             store2 `shouldBe` store1
             resp `shouldBe` ItemSyncResponseServerChanged (Timed i st')
-      it "tells the client that there is a deleted item at the server side" $ do
+      it "tells the client that there is a deleted item at the server side" $
         forAllValid $ \st -> do
           let store1 = ServerEmpty
               req = ItemSyncRequestKnown st

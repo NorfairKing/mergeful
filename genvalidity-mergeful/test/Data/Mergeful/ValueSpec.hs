@@ -48,36 +48,36 @@ spec = do
           let (resp, store2) = processServerValueSync @Int store1 req
           store2 `shouldBe` store1
           resp `shouldBe` ValueSyncResponseInSync
-    describe "Client changes" $ do
+    describe "Client changes" $
       it "changes the item that the client tells the server to change" $
-        forAllValid $ \i ->
-          forAllValid $ \j ->
-            forAllValid $ \st -> do
-              let store1 = ServerValue (Timed i st)
-                  req = ValueSyncRequestKnownButChanged (Timed j st)
-              let (resp, store2) = processServerValueSync @Int store1 req
-              let time = incrementServerTime st
-              store2 `shouldBe` ServerValue (Timed j time)
-              resp `shouldBe` ValueSyncResponseClientChanged time
-    describe "Server changes" $ do
-      it "tells the client that there is a modified item at the server side" $ do
-        forAllValid $ \i ->
+      forAllValid $ \i ->
+        forAllValid $ \j ->
+          forAllValid $ \st -> do
+            let store1 = ServerValue (Timed i st)
+                req = ValueSyncRequestKnownButChanged (Timed j st)
+            let (resp, store2) = processServerValueSync @Int store1 req
+            let time = incrementServerTime st
+            store2 `shouldBe` ServerValue (Timed j time)
+            resp `shouldBe` ValueSyncResponseClientChanged time
+    describe "Server changes" $
+      it "tells the client that there is a modified item at the server side" $
+      forAllValid $ \i ->
+        forAllSubsequent $ \(st, st') -> do
+          let store1 = ServerValue (Timed i st')
+              req = ValueSyncRequestKnown st
+          let (resp, store2) = processServerValueSync @Int store1 req
+          store2 `shouldBe` store1
+          resp `shouldBe` ValueSyncResponseServerChanged (Timed i st')
+    describe "Conflicts" $
+      it "notices a conflict if the client and server are trying to sync different items" $
+      forAllValid $ \i ->
+        forAllValid $ \j ->
           forAllSubsequent $ \(st, st') -> do
             let store1 = ServerValue (Timed i st')
-                req = ValueSyncRequestKnown st
+                req = ValueSyncRequestKnownButChanged (Timed j st)
             let (resp, store2) = processServerValueSync @Int store1 req
             store2 `shouldBe` store1
-            resp `shouldBe` ValueSyncResponseServerChanged (Timed i st')
-    describe "Conflicts" $ do
-      it "notices a conflict if the client and server are trying to sync different items" $
-        forAllValid $ \i ->
-          forAllValid $ \j ->
-            forAllSubsequent $ \(st, st') -> do
-              let store1 = ServerValue (Timed i st')
-                  req = ValueSyncRequestKnownButChanged (Timed j st)
-              let (resp, store2) = processServerValueSync @Int store1 req
-              store2 `shouldBe` store1
-              resp `shouldBe` ValueSyncResponseConflict (Timed i st')
+            resp `shouldBe` ValueSyncResponseConflict (Timed i st')
   describe "syncing" $ do
     it "succesfully syncs a modification across to a second client" $
       forAllValid $ \time1 ->
