@@ -7,7 +7,7 @@
 --
 -- __If you are importing this module, you are probably doing something wrong.__
 module Data.Mergeful.Timed
-  ( ServerTime
+  ( ServerTime(..)
   , initialServerTime
   , incrementServerTime
   , Timed(..)
