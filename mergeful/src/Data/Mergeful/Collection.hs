@@ -87,6 +87,7 @@ import Data.Validity.Containers ()
 import Data.Word
 
 import Control.Applicative
+import Control.DeepSeq
 import Control.Monad
 
 import Data.Mergeful.Item
@@ -102,6 +103,8 @@ newtype ClientId =
   deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON, ToJSONKey, FromJSON, FromJSONKey)
 
 instance Validity ClientId
+
+instance NFData ClientId
 
 data ClientStore i a =
   ClientStore
@@ -130,6 +133,8 @@ instance (Validity i, Show i, Ord i, Validity a) => Validity (ClientStore i a) w
           , M.keys clientStoreDeletedItems
           ]
       ]
+
+instance (NFData i, NFData a) => NFData (ClientStore i a)
 
 instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (ClientStore i a) where
   parseJSON =
@@ -284,6 +289,8 @@ newtype ServerStore i a =
 
 instance (Validity i, Show i, Ord i, Validity a) => Validity (ServerStore i a)
 
+instance (NFData i, NFData a) => NFData (ServerStore i a)
+
 -- | A server store to start with
 --
 -- This store contains no items.
@@ -317,6 +324,8 @@ instance (Validity i, Show i, Ord i, Validity a) => Validity (SyncRequest i a) w
           , M.keys syncRequestDeletedItems
           ]
       ]
+
+instance (NFData i, NFData a) => NFData (SyncRequest i a)
 
 instance (Ord i, FromJSONKey i, FromJSON a) => FromJSON (SyncRequest i a) where
   parseJSON =
@@ -409,6 +418,8 @@ instance (Validity i, Show i, Ord i, Validity a) => Validity (SyncResponse i a) 
           , S.toList syncResponseConflictsServerDeleted
           ]
       ]
+
+instance (NFData i, NFData a) => NFData (SyncResponse i a)
 
 instance (Ord i, FromJSON i, FromJSONKey i, FromJSON a) => FromJSON (SyncResponse i a) where
   parseJSON =
@@ -606,6 +617,8 @@ data Identifier i
   deriving (Show, Eq, Ord, Generic)
 
 instance Validity i => Validity (Identifier i)
+
+instance NFData i => NFData (Identifier i)
 
 -- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
 processServerSync ::

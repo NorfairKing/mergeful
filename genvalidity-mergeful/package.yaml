@@ -12,11 +12,12 @@ extra-source-files:
 
 description:         Please see the README on GitHub at <https://github.com/NorfairKing/mergeful#readme>
 
+dependencies:
+- base <5
 
 library:
   source-dirs: src
   dependencies:
-    - base >= 4.7 && < 5
     - QuickCheck
     - containers
     - genvalidity
@@ -33,7 +34,6 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-      - base >= 4.7 && < 5
       - QuickCheck
       - containers
       - genvalidity-hspec
@@ -47,3 +47,18 @@ tests:
       - random
       - time
       - uuid
+
+benchmarks:
+  mergeful-bench:
+    main:                Bench.hs
+    source-dirs:         bench
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+      - criterion
+      - genvalidity-criterion
+      - genvalidity-mergeful
+      - mergeful
+

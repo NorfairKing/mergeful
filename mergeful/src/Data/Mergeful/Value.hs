@@ -62,6 +62,8 @@ import GHC.Generics (Generic)
 import Data.Aeson as JSON
 import Data.Validity
 
+import Control.DeepSeq
+
 import Data.Mergeful.Timed
 
 data ChangedFlag
@@ -70,6 +72,8 @@ data ChangedFlag
   deriving (Show, Eq, Generic)
 
 instance Validity ChangedFlag
+
+instance NFData ChangedFlag
 
 -- | The client side value.
 --
@@ -83,6 +87,8 @@ data ClientValue a =
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ClientValue a)
+
+instance NFData a => NFData (ClientValue a)
 
 instance FromJSON a => FromJSON (ClientValue a) where
   parseJSON =
@@ -119,6 +125,8 @@ newtype ServerValue a =
 
 instance Validity a => Validity (ServerValue a)
 
+instance NFData a => NFData (ServerValue a)
+
 instance FromJSON a => FromJSON (ServerValue a) where
   parseJSON =
     withObject "ServerValue" $ \o -> ServerValue <$> (Timed <$> o .: "value" <*> o .: "time")
@@ -141,6 +149,8 @@ data ValueSyncRequest a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ValueSyncRequest a)
+
+instance NFData a => NFData (ValueSyncRequest a)
 
 instance FromJSON a => FromJSON (ValueSyncRequest a) where
   parseJSON =
@@ -182,6 +192,8 @@ data ValueSyncResponse a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ValueSyncResponse a)
+
+instance NFData a => NFData (ValueSyncResponse a)
 
 instance FromJSON a => FromJSON (ValueSyncResponse a) where
   parseJSON =
@@ -228,6 +240,8 @@ data ValueMergeResult a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ValueMergeResult a)
+
+instance NFData a => NFData (ValueMergeResult a)
 
 -- | Merge an 'ValueSyncResponse' into the current 'ClientValue'.
 --

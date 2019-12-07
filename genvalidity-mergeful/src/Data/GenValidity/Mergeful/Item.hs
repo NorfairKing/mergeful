@@ -8,6 +8,12 @@ import Data.Mergeful.Item
 
 import Data.GenValidity.Mergeful.Timed ()
 
+instance GenUnchecked a => GenUnchecked (ItemMergeResult a)
+
+instance GenValid a => GenValid (ItemMergeResult a) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
+
 instance GenUnchecked a => GenUnchecked (ClientItem a)
 
 instance GenValid a => GenValid (ClientItem a) where

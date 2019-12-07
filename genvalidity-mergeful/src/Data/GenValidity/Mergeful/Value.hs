@@ -10,7 +10,15 @@ import Data.GenValidity.Mergeful.Timed ()
 
 instance GenUnchecked ChangedFlag
 
-instance GenValid ChangedFlag
+instance GenValid ChangedFlag where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
+
+instance GenUnchecked a => GenUnchecked (ValueMergeResult a)
+
+instance GenValid a => GenValid (ValueMergeResult a) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
 instance GenUnchecked a => GenUnchecked (ClientValue a)
 

@@ -65,6 +65,7 @@ import Data.Aeson as JSON
 import Data.Validity
 
 import Control.Applicative
+import Control.DeepSeq
 
 import Data.Mergeful.Timed
 
@@ -82,6 +83,8 @@ data ClientItem a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ClientItem a)
+
+instance NFData a => NFData (ClientItem a)
 
 instance FromJSON a => FromJSON (ClientItem a) where
   parseJSON =
@@ -122,6 +125,8 @@ data ServerItem a
 
 instance Validity a => Validity (ServerItem a)
 
+instance NFData a => NFData (ServerItem a)
+
 instance FromJSON a => FromJSON (ServerItem a) where
   parseJSON =
     withObject "ServerItem" $ \o ->
@@ -156,6 +161,8 @@ data ItemSyncRequest a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ItemSyncRequest a)
+
+instance NFData a => NFData (ItemSyncRequest a)
 
 instance FromJSON a => FromJSON (ItemSyncRequest a) where
   parseJSON =
@@ -243,6 +250,8 @@ data ItemSyncResponse a
 
 instance Validity a => Validity (ItemSyncResponse a)
 
+instance NFData a => NFData (ItemSyncResponse a)
+
 instance FromJSON a => FromJSON (ItemSyncResponse a) where
   parseJSON =
     withObject "ItemSyncResponse" $ \o -> do
@@ -308,6 +317,8 @@ data ItemMergeResult a
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ItemMergeResult a)
+
+instance NFData a => NFData (ItemMergeResult a)
 
 -- | Merge an 'ItemSyncResponse' into the current 'ClientItem'.
 --

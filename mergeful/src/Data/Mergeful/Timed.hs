@@ -19,6 +19,8 @@ import Data.Aeson as JSON
 import Data.Validity
 import Data.Word
 
+import Control.DeepSeq
+
 -- | A "time", as "measured" by the server.
 --
 -- This is closer to a version number than an actual timestamp, but that
@@ -32,6 +34,8 @@ newtype ServerTime =
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 instance Validity ServerTime
+
+instance NFData ServerTime
 
 -- | A server time to start with.
 initialServerTime :: ServerTime
@@ -50,6 +54,8 @@ data Timed a =
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (Timed a)
+
+instance NFData a => NFData (Timed a)
 
 instance FromJSON a => FromJSON (Timed a) where
   parseJSON = withObject "Timed" $ \o -> Timed <$> o .: "value" <*> o .: "time"

@@ -29,7 +29,7 @@ instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (ClientStore i 
 instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (ClientStore i a) where
   genValid =
     (`suchThat` isValid) $ do
-      identifiers <- scale (* 3) genValid
+      identifiers <- genValid
       (s1, s2) <- splitSet identifiers
       (s3, s4) <- splitSet s1
       clientStoreAddedItems <- genValid
@@ -50,7 +50,7 @@ instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (SyncRequest i 
 instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncRequest i a) where
   genValid =
     (`suchThat` isValid) $ do
-      identifiers <- scale (* 3) genValid
+      identifiers <- genValid
       (s1, s2) <- splitSet identifiers
       (s3, s4) <- splitSet s1
       syncRequestNewItems <- genValid
@@ -65,7 +65,7 @@ instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (SyncResponse i
 instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncResponse i a) where
   genValid =
     (`suchThat` isValid) $ do
-      identifiers <- scale (* 10) genValid
+      identifiers <- scale (* 2) genValid
       (s01, s02) <- splitSet identifiers
       (s03, s04) <- splitSet s01
       (s05, s06) <- splitSet s02
