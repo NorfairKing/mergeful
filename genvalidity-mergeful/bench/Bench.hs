@@ -40,6 +40,7 @@ main =
         [ genValidBench @ClientId
         , genValidBench @(ClientStore Int Bool)
         , genValidBench @(SyncRequest Int Bool)
+        , genValidBench @(ClientAddition Int)
         , genValidBench @(SyncResponse Int Bool)
         , genValidBench @(ServerStore Int Bool)
         ]

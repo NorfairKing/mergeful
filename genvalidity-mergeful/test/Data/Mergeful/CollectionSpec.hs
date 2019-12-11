@@ -44,6 +44,8 @@ spec = do
   jsonSpecOnValid @(ServerStore Int Int)
   genValidSpec @(SyncRequest Int Int)
   jsonSpecOnValid @(SyncRequest Int Int)
+  genValidSpec @(ClientAddition Int)
+  jsonSpecOnValid @(ClientAddition Int)
   genValidSpec @(SyncResponse Int Int)
   jsonSpecOnValid @(SyncResponse Int Int)
   describe "initialClientStore" $ it "is valid" $ shouldBeValid $ initialClientStore @Int @Int
@@ -340,7 +342,7 @@ mergeFunctionSpec mergeFunc = do
             (resp1, sstore2) <- processServerSync genD sstore1 req1
             let addedItems = syncResponseClientAdded resp1
             case M.toList addedItems of
-              [(ClientId 0, (uuid, st))] -> do
+              [(ClientId 0, ClientAddition uuid st)] -> do
                 let time = initialServerTime
                 lift $ st `shouldBe` time
                 let items = M.singleton uuid (Timed i st)

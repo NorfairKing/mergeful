@@ -60,6 +60,7 @@ module Data.Mergeful.Collection
   -- * Types, for reference
   , ClientStore(..)
   , SyncRequest(..)
+  , ClientAddition(..)
   , SyncResponse(..)
   , emptySyncResponse
   , ServerStore(..)
@@ -356,9 +357,26 @@ initialSyncRequest =
     , syncRequestDeletedItems = M.empty
     }
 
+data ClientAddition i =
+  ClientAddition
+    { clientAdditionId :: i
+    , clientAdditionServerTime :: ServerTime
+    }
+  deriving (Show, Eq, Generic)
+
+instance Validity i => Validity (ClientAddition i)
+
+instance NFData i => NFData (ClientAddition i)
+
+instance FromJSON i => FromJSON (ClientAddition i) where
+  parseJSON = withObject "ClientAddition" $ \o -> ClientAddition <$> o .: "id" <*> o .: "time"
+
+instance ToJSON i => ToJSON (ClientAddition i) where
+  toJSON ClientAddition {..} = object ["id" .= clientAdditionId, "time" .= clientAdditionServerTime]
+
 data SyncResponse i a =
   SyncResponse
-    { syncResponseClientAdded :: Map ClientId (i, ServerTime)
+    { syncResponseClientAdded :: Map ClientId (ClientAddition i)
       -- ^ The client added these items and server has succesfully been made aware of that.
       --
       -- The client needs to update their server times
@@ -407,7 +425,7 @@ instance (Validity i, Show i, Ord i, Validity a) => Validity (SyncResponse i a) 
       , declare "There are no duplicate IDs" $
         distinct $
         concat
-          [ map (\(_, (i, _)) -> i) $ M.toList syncResponseClientAdded
+          [ map (\(_, ClientAddition {..}) -> clientAdditionId) $ M.toList syncResponseClientAdded
           , M.keys syncResponseClientChanged
           , S.toList syncResponseClientDeleted
           , M.keys syncResponseServerAdded
@@ -583,7 +601,7 @@ mergeSyncResponseFromServer =
 mergeAddedItems ::
      forall i a. Ord i
   => Map ClientId a
-  -> Map ClientId (i, ServerTime)
+  -> Map ClientId (ClientAddition i)
   -> (Map ClientId a, Map i (Timed a))
 mergeAddedItems local added = M.foldlWithKey go (M.empty, M.empty) local
   where
@@ -591,7 +609,12 @@ mergeAddedItems local added = M.foldlWithKey go (M.empty, M.empty) local
     go (as, m) i a =
       case M.lookup i added of
         Nothing -> (M.insert i a as, m)
-        Just (k, st) -> (as, M.insert k (Timed {timedValue = a, timedTime = st}) m)
+        Just ClientAddition {..} ->
+          ( as
+          , M.insert
+              clientAdditionId
+              (Timed {timedValue = a, timedTime = clientAdditionServerTime})
+              m)
 
 -- | Merge the local synced but changed items with the ones that the server has acknowledged as changed.
 mergeSyncedButChangedItems ::
@@ -716,7 +739,10 @@ addToSyncResponse sr cid isr =
     BothServerAndClient i int ->
       case isr of
         ItemSyncResponseClientAdded st ->
-          sr {syncResponseClientAdded = M.insert int (i, st) $ syncResponseClientAdded sr}
+          sr
+            { syncResponseClientAdded =
+                M.insert int (ClientAddition i st) $ syncResponseClientAdded sr
+            }
         _ -> error "should not happen"
     OnlyServer i ->
       case isr of

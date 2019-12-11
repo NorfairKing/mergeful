@@ -60,6 +60,12 @@ instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncRequest i a) w
       pure SyncRequest {..}
   shrinkValid = shrinkValidStructurally
 
+instance GenUnchecked i => GenUnchecked (ClientAddition i)
+
+instance GenValid i => GenValid (ClientAddition i) where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
+
 instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (SyncResponse i a)
 
 instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncResponse i a) where
@@ -78,7 +84,7 @@ instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncResponse i a) 
         do m <- genValid :: Gen (Map ClientId ())
            if S.null s08
              then pure M.empty
-             else forM m $ \() -> (,) <$> elements (S.toList s08) <*> genValid
+             else forM m $ \() -> ClientAddition <$> elements (S.toList s08) <*> genValid
       syncResponseClientChanged <- mapWithIds s09
       let syncResponseClientDeleted = s10
       syncResponseServerAdded <- mapWithIds s11
