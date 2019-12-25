@@ -3,8 +3,8 @@ packages:
   - mergeful
   - genvalidity-mergeful
 extra-deps:
-  - git: https://github.com/NorfairKing/validity.git
-    commit: c5a6efb92d96941308f55220a6f42f399acb1951
+  - github: NorfairKing/validity
+    commit: a7be852cea9292ef2a618cb88ff823a53d926318
     subdirs:
     - genvalidity
     - genvalidity-aeson

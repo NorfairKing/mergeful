@@ -414,13 +414,9 @@ mergeUsingStrategy ItemMergeStrategy {..} cs mr =
     MergeSuccess cs' -> cs'
     MergeConflict a1 a2 -> ClientItemSynced $ itemMergeStrategyMergeChangeConflict a1 a2
     MergeConflictClientDeleted sa ->
-      case itemMergeStrategyMergeClientDeletedConflict sa of
-        Nothing -> ClientEmpty
-        Just t -> ClientItemSynced t
+      maybe ClientEmpty ClientItemSynced (itemMergeStrategyMergeClientDeletedConflict sa)
     MergeConflictServerDeleted ca ->
-      case itemMergeStrategyMergeServerDeletedConflict ca of
-        Nothing -> ClientEmpty
-        Just a -> ClientAdded a
+      maybe ClientEmpty ClientAdded (itemMergeStrategyMergeServerDeletedConflict ca)
     MergeMismatch -> cs
 
 -- | Resolve an 'ItemMergeResult' by taking whatever the server gave the client.
