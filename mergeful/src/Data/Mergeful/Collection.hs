@@ -794,3 +794,11 @@ fromThese a b t =
     This a' -> (a', b)
     That b' -> (a, b')
     These a' b' -> (a', b')
+
+-- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
+processServerSyncCustom ::
+     forall i a m. (Ord i, Monad m)
+  => ServerSyncProcessor i a m
+  -> SyncRequest i a
+  -> m (SyncResponse i a)
+processServerSyncCustom ServerSyncProcessor {..} sr@SyncRequest {..} = undefined
