@@ -795,6 +795,12 @@ fromThese a b t =
     That b' -> (a, b')
     These a' b' -> (a', b')
 
+data ServerSyncProcessor i a m =
+  ServerSyncProcessor
+    { serverSyncProcessorDeleteMany :: Set i -> m (Set i)
+    , serverSyncProcessorInsertMany :: Map ClientId a -> m (Map ClientId (ClientAddition i))
+    }
+
 -- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
 processServerSyncCustom ::
      forall i a m. (Ord i, Monad m)
