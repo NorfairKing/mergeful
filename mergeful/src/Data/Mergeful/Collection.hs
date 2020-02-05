@@ -44,6 +44,7 @@ module Data.Mergeful.Collection
   , clientStoreSyncIdSet
   , clientStoreItems
   , addItemToClientStore
+  , findFreeSpot
   , markItemDeletedInClientStore
   , changeItemInClientStore
   , deleteItemFromClientStore
@@ -220,14 +221,27 @@ addItemToClientStore :: a -> ClientStore i a -> ClientStore i a
 addItemToClientStore a cs =
   let oldAddedItems = clientStoreAddedItems cs
       newAddedItems =
-        let newKey =
-              ClientId $
-              if M.null oldAddedItems
-                then 0
-                else let (ClientId k, _) = M.findMax oldAddedItems
-                      in succ k
+        let newKey = findFreeSpot oldAddedItems
          in M.insert newKey a oldAddedItems
    in cs {clientStoreAddedItems = newAddedItems}
+
+-- | Find a free client id to use
+--
+-- You shouldn't need this function, 'addItemToClientStore' takes care of this.
+findFreeSpot :: Map ClientId a -> ClientId
+findFreeSpot m =
+  if M.null m
+    then ClientId 0
+    else let (i, _) = M.findMax m
+          in go (next i)
+  where
+    go i =
+      if M.member i m
+        then go (next i)
+        else i
+    next (ClientId w)
+      | w == maxBound = ClientId 0
+      | otherwise = ClientId $ succ w
 
 -- | Mark an item deleted in a client store.
 --

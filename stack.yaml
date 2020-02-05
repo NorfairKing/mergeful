@@ -4,7 +4,7 @@ packages:
   - genvalidity-mergeful
 extra-deps:
   - github: NorfairKing/validity
-    commit: a0fcd782138dac7200e6544c2f40208649ecb0e9
+    commit: be40c0a0b0bf6a1d58f4a6a5c6770c4a544c4450
     subdirs:
     - genvalidity
     - genvalidity-aeson
@@ -37,4 +37,9 @@ extra-deps:
     - validity-unordered-containers
     - validity-uuid
     - validity-vector
+nix:
+  path: [ "nixpkgs=https://github.com/NixOS/nixpkgs/archive/e6b93257b0ba070bd12810eeacbe281396c24316.tar.gz" ]
+  add-gc-roots: true
+  packages:
+  - zlib
 

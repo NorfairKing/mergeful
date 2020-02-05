@@ -17,7 +17,8 @@ import GHC.Generics (Generic)
 
 import Data.Aeson as JSON
 import Data.Validity
-import Data.Word
+
+import Numeric.Natural
 
 import Control.DeepSeq
 
@@ -29,7 +30,7 @@ import Control.DeepSeq
 -- In any case, a client should not be changing this value.
 newtype ServerTime =
   ServerTime
-    { unServerTime :: Word64
+    { unServerTime :: Natural
     }
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
@@ -41,7 +42,7 @@ instance NFData ServerTime
 initialServerTime :: ServerTime
 initialServerTime = ServerTime 0
 
--- | Increment a server time, this will only start repeating after at least @2^64 - 1@ values, so you're probably fine.
+-- | Increment a server time.
 incrementServerTime :: ServerTime -> ServerTime
 incrementServerTime (ServerTime w) = ServerTime (succ w)
 
