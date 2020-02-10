@@ -17,6 +17,7 @@ import GHC.Generics (Generic)
 
 import Data.Aeson as JSON
 import Data.Validity
+import Data.Word
 
 import Numeric.Natural
 
@@ -28,9 +29,15 @@ import Control.DeepSeq
 -- distinction should not matter for your usage of this library.
 --
 -- In any case, a client should not be changing this value.
+--
+-- We use a 'Word64' instead of a natural.
+-- This will go wrong after 2^64 versions, but since that
+-- will not happen in practice, we will not worry about it.
+-- You would have to sync millions of modifications every second
+-- until long after the sun consumes the earth for this to be a problem.
 newtype ServerTime =
   ServerTime
-    { unServerTime :: Natural
+    { unServerTime :: Word64
     }
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
