@@ -19,8 +19,6 @@ import Data.Aeson as JSON
 import Data.Validity
 import Data.Word
 
-import Numeric.Natural
-
 import Control.DeepSeq
 
 -- | A "time", as "measured" by the server.
