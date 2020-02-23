@@ -136,11 +136,11 @@ spec = do
             resp `shouldBe` ItemSyncResponseConflictServerDeleted
   describe "syncing" $ do
     describe "fromServer" $ do
-      syncingSpec mergeFromServer
-      emptyResponseSpec mergeFromServer
+      syncingSpec @Int mergeFromServer
+      emptyResponseSpec @Int mergeFromServer
     describe "fromClient" $ do
-      syncingSpec mergeIgnoringProblems
-      xdescribe "does not hold" $ emptyResponseSpec mergeIgnoringProblems
+      syncingSpec @Int mergeIgnoringProblems
+      xdescribe "does not hold" $ emptyResponseSpec @Int mergeIgnoringProblems
     describe "gadt" $ do
       syncingSpec (mergeUsingStrategy gcounterStrategy)
       emptyResponseSpec (mergeUsingStrategy gcounterStrategy)
@@ -153,12 +153,15 @@ gcounterStrategy =
     , itemMergeStrategyMergeServerDeletedConflict = const Nothing
     }
 
-syncingSpec :: (ClientItem Int -> ItemMergeResult Int -> ClientItem Int) -> Spec
+syncingSpec ::
+     forall a. (Show a, Eq a, GenValid a)
+  => (ClientItem a -> ItemMergeResult a -> ClientItem a)
+  -> Spec
 syncingSpec mergeStrategy = do
   let mergeSyncResponse ci = mergeStrategy ci . mergeItemSyncResponseRaw ci
   it "it always possible to add an item from scratch" $
     forAllValid $ \i -> do
-      let cstore1 = ClientAdded (i :: Int)
+      let cstore1 = ClientAdded i
       let sstore1 = ServerEmpty
       let req1 = makeItemSyncRequest cstore1
           (resp1, sstore2) = processServerItemSync sstore1 req1
@@ -177,7 +180,7 @@ syncingSpec mergeStrategy = do
       -- Client A makes sync request 1
       let req1 = makeItemSyncRequest cAstore1
       -- The server processes sync request 1
-      let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
+      let (resp1, sstore2) = processServerItemSync sstore1 req1
       let time = initialServerTime
       resp1 `shouldBe` ItemSyncResponseClientAdded time
       sstore2 `shouldBe` ServerFull (Timed i time)
@@ -207,7 +210,7 @@ syncingSpec mergeStrategy = do
           -- Client B makes sync request 1
           let req1 = makeItemSyncRequest cBstore1
           -- The server processes sync request 1
-          let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
+          let (resp1, sstore2) = processServerItemSync sstore1 req1
           let time2 = incrementServerTime time1
           resp1 `shouldBe` ItemSyncResponseClientChanged time2
           sstore2 `shouldBe` ServerFull (Timed j time2)
@@ -236,7 +239,7 @@ syncingSpec mergeStrategy = do
         -- Client B makes sync request 1
         let req1 = makeItemSyncRequest cBstore1
         -- The server processes sync request 1
-        let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
+        let (resp1, sstore2) = processServerItemSync sstore1 req1
         resp1 `shouldBe` ItemSyncResponseClientDeleted
         sstore2 `shouldBe` ServerEmpty
         -- Client B merges the response
@@ -264,7 +267,7 @@ syncingSpec mergeStrategy = do
         -- Client A makes sync request 1
         let req1 = makeItemSyncRequest cAstore1
         -- The server processes sync request 1
-        let (resp1, sstore2) = processServerItemSync @Int sstore1 req1
+        let (resp1, sstore2) = processServerItemSync sstore1 req1
         resp1 `shouldBe` ItemSyncResponseClientDeleted
         sstore2 `shouldBe` ServerEmpty
         -- Client A merges the response
@@ -284,7 +287,7 @@ syncingSpec mergeStrategy = do
   it "is idempotent with one client" $
     forAllValid $ \cstore1 ->
       forAllValid $ \sstore1 -> do
-        let req1 = makeItemSyncRequest (cstore1 :: ClientItem Int)
+        let req1 = makeItemSyncRequest cstore1
             (resp1, sstore2) = processServerItemSync sstore1 req1
             cstore2 = mergeSyncResponse cstore1 resp1
             req2 = makeItemSyncRequest cstore2
@@ -293,13 +296,16 @@ syncingSpec mergeStrategy = do
         cstore2 `shouldBe` cstore3
         sstore2 `shouldBe` sstore3
 
-emptyResponseSpec :: (ClientItem Int -> ItemMergeResult Int -> ClientItem Int) -> Spec
+emptyResponseSpec ::
+     forall a. (Show a, Eq a, GenValid a)
+  => (ClientItem a -> ItemMergeResult a -> ClientItem a)
+  -> Spec
 emptyResponseSpec mergeStrategy = do
   let mergeSyncResponse ci = mergeStrategy ci . mergeItemSyncResponseRaw ci
   it "is returns an empty response on the second sync with no modifications" $
     forAllValid $ \cstore1 ->
       forAllValid $ \sstore1 -> do
-        let req1 = makeItemSyncRequest (cstore1 :: ClientItem Int)
+        let req1 = makeItemSyncRequest cstore1
             (resp1, sstore2) = processServerItemSync sstore1 req1
             cstore2 = mergeSyncResponse cstore1 resp1
             req2 = makeItemSyncRequest cstore2

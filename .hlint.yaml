@@ -7,8 +7,6 @@
       - "Data.Mergeful.CollectionSpec.mergeFunctionSpec"
 - ignore:
     name: "Use ||"
-    within:
-      - "Data.Mergeful.CollectionSpec.spec"
 - ignore:
     name: "Reduce duplication"
     within:
