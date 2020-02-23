@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Data.Mergeful.DirTreeSpec where
+module Data.Mergeful.DirTree.TypeSpec where
 
 import qualified Data.ByteString as SB
 import Data.Int
@@ -17,8 +17,8 @@ import Test.Hspec.QuickCheck
 import Test.Validity
 
 import Data.GenValidity.ByteString ()
-import Data.GenValidity.Mergeful.DirTree ()
-import Data.Mergeful.DirTree
+import Data.GenValidity.Mergeful.DirTree.Type ()
+import Data.Mergeful.DirTree.Type
 
 spec :: Spec
 spec = do

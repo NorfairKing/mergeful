@@ -7,7 +7,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Data.Mergeful.DirTree
+module Data.Mergeful.DirTree.Type
   ( DirTree(..)
   , DirForest(..)
   , emptyDirForest

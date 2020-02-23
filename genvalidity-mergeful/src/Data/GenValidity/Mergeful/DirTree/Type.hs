@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Data.GenValidity.Mergeful.DirTree where
+module Data.GenValidity.Mergeful.DirTree.Type where
 
 import qualified Data.Map as M
 import Path
@@ -12,7 +12,7 @@ import Data.GenValidity
 import Data.GenValidity.Containers ()
 import Data.GenValidity.Path ()
 
-import Data.Mergeful.DirTree
+import Data.Mergeful.DirTree.Type
 
 instance (Ord a, GenUnchecked a) => GenUnchecked (DirTree a)
 
