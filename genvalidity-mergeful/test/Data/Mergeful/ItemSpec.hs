@@ -309,8 +309,7 @@ emptyResponseSpec mergeStrategy = do
             (resp1, sstore2) = processServerItemSync sstore1 req1
             cstore2 = mergeSyncResponse cstore1 resp1
             req2 = makeItemSyncRequest cstore2
-            (resp2, sstore3) = processServerItemSync sstore2 req2
-            cstore3 = mergeSyncResponse cstore2 resp2
+            (resp2, _) = processServerItemSync sstore2 req2
         case resp2 of
           ItemSyncResponseInSyncEmpty -> pure ()
           ItemSyncResponseInSyncFull -> pure ()
