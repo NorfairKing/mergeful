@@ -21,8 +21,8 @@ library:
     - containers
     - deepseq
     - mtl
+    - path
     - text
-    - time
     - validity
     - validity-containers
-    - validity-time
+    - validity-path
