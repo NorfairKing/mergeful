@@ -140,10 +140,15 @@ spec = do
   describe "Syncing with mergeSyncResponseIgnoreProblems" $ do
     mergeFunctionSpec @Int mergeSyncResponseIgnoreProblems
     noDataLossSpec @Int mergeSyncResponseIgnoreProblems
+    xdescribe "does not hold" $ do
+      emptyResponseSpec @Int mergeSyncResponseIgnoreProblems
+      noDivergenceSpec @Int mergeSyncResponseIgnoreProblems
   describe "Syncing with mergeSyncResponseFromServer" $ do
     mergeFunctionSpec @Int mergeSyncResponseFromServer
     noDivergenceSpec @Int mergeSyncResponseFromServer
+    emptyResponseSpec @Int mergeSyncResponseFromServer
     noDifferentExceptForConflicts @Int mergeSyncResponseFromServer mergeSyncResponseIgnoreProblems
+    xdescribe "does not hold" $ noDataLossSpec @Int mergeSyncResponseFromServer
   describe "Syncing with mergeSyncResponseUsingStrategy with a GCounter" $ do
     let strat :: ItemMergeStrategy Int
         strat =
@@ -158,6 +163,7 @@ spec = do
     mergeFunctionSpec @Int mergeFunc
     noDataLossSpec @Int mergeFunc
     noDivergenceSpec @Int mergeFunc
+    emptyResponseSpec @Int mergeFunc
     noDifferentExceptForConflicts @Int mergeFunc mergeSyncResponseIgnoreProblems
     noDifferentExceptForConflicts @Int mergeFunc mergeSyncResponseFromServer
 
@@ -571,6 +577,23 @@ noDivergenceSpec mergeFunc =
                   (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
                         -- Client A and Client B now have the same store
                 cBstore2 `shouldBe` cAstore2
+
+emptyResponseSpec ::
+     forall a. (Show a, Eq a, Ord a, GenValid a)
+  => (forall i. Ord i =>
+                  ClientStore i a -> SyncResponse i a -> ClientStore i a)
+  -> Spec
+emptyResponseSpec mergeFunc =
+  it "is returns an empty response on the second sync with no modifications" $
+  forAllValid $ \cstore1 ->
+    forAllValid $ \sstore1 ->
+      evalDM $ do
+        let req1 = makeSyncRequest cstore1
+        (resp1, sstore2) <- processServerSync genD sstore1 req1
+        let cstore2 = mergeFunc cstore1 resp1
+            req2 = makeSyncRequest cstore2
+        (resp2, _) <- processServerSync genD sstore2 req2
+        lift $ resp2 `shouldBe` emptySyncResponse
 
 noDifferentExceptForConflicts ::
      forall a. (Show a, Eq a, Ord a, GenValid a)
