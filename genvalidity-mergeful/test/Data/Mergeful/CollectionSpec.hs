@@ -277,8 +277,7 @@ spec = do
     mergeFunctionSpec @Int $
     mergeSyncResponseUsingStrategy
       ItemMergeStrategy
-        { itemMergeStrategyMergeChangeConflict =
-            \clientItem (Timed serverItem t) -> Timed (max clientItem serverItem) t
+        { itemMergeStrategyMergeChangeConflict = \clientItem serverItem -> max clientItem serverItem
         , itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem
         , itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
         }

@@ -138,7 +138,9 @@ spec = do
     describe "fromServer" $ do
       syncingSpec mergeFromServer
       emptyResponseSpec mergeFromServer
-    describe "fromClient" $ syncingSpec mergeIgnoringProblems
+    describe "fromClient" $ do
+      syncingSpec mergeIgnoringProblems
+      xdescribe "does not hold" $ emptyResponseSpec mergeIgnoringProblems
     describe "gadt" $ do
       syncingSpec (mergeUsingStrategy gcounterStrategy)
       emptyResponseSpec (mergeUsingStrategy gcounterStrategy)
@@ -146,7 +148,7 @@ spec = do
 gcounterStrategy :: ItemMergeStrategy Int
 gcounterStrategy =
   ItemMergeStrategy
-    { itemMergeStrategyMergeChangeConflict = \i t -> t {timedValue = max (timedValue t) i}
+    { itemMergeStrategyMergeChangeConflict = max
     , itemMergeStrategyMergeClientDeletedConflict = Just
     , itemMergeStrategyMergeServerDeletedConflict = const Nothing
     }

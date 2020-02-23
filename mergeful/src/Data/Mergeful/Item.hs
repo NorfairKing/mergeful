@@ -370,9 +370,9 @@ mergeItemSyncResponseIgnoreProblems cs = mergeIgnoringProblems cs . mergeItemSyn
 -- | A strategy to merge conflicts for item synchronisation
 data ItemMergeStrategy a =
   ItemMergeStrategy
-    { itemMergeStrategyMergeChangeConflict :: a -> Timed a -> Timed a
+    { itemMergeStrategyMergeChangeConflict :: a -> a -> a
       -- ^ How to merge modification conflicts
-    , itemMergeStrategyMergeClientDeletedConflict :: Timed a -> Maybe (Timed a)
+    , itemMergeStrategyMergeClientDeletedConflict :: a -> Maybe a
       -- ^ How to merge conflicts where the client deleted an item that the server modified
     , itemMergeStrategyMergeServerDeletedConflict :: a -> Maybe a
       -- ^ How to merge conflicts where the server deleted an item that the client modified
@@ -412,9 +412,11 @@ mergeUsingStrategy :: ItemMergeStrategy a -> ClientItem a -> ItemMergeResult a -
 mergeUsingStrategy ItemMergeStrategy {..} cs mr =
   case mr of
     MergeSuccess cs' -> cs'
-    MergeConflict a1 a2 -> ClientItemSynced $ itemMergeStrategyMergeChangeConflict a1 a2
-    MergeConflictClientDeleted sa ->
-      maybe ClientEmpty ClientItemSynced (itemMergeStrategyMergeClientDeletedConflict sa)
+    MergeConflict a1 (Timed a2 st) ->
+      ClientItemSynced $ Timed (itemMergeStrategyMergeChangeConflict a1 a2) st
+    MergeConflictClientDeleted (Timed sa st) ->
+      maybe ClientEmpty ClientItemSynced $
+      Timed <$> itemMergeStrategyMergeClientDeletedConflict sa <*> pure st
     MergeConflictServerDeleted ca ->
       maybe ClientEmpty ClientAdded (itemMergeStrategyMergeServerDeletedConflict ca)
     MergeMismatch -> cs
