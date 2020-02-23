@@ -57,7 +57,7 @@ data Timed a =
     { timedValue :: !a
     , timedTime :: !ServerTime
     }
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Ord, Generic)
 
 instance Validity a => Validity (Timed a)
 

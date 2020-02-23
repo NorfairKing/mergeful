@@ -1,10 +1,5 @@
 - ignore:
     name: "Avoid lambda"
-    within:
-      - "Data.Mergeful.Collection.mergeSyncResponseFromServer"
-      - "Data.Mergeful.Item.mergeFromServer"
-      - "Data.Mergeful.CollectionSpec.spec"
-      - "Data.Mergeful.CollectionSpec.mergeFunctionSpec"
 - ignore:
     name: "Use ||"
 - ignore:
@@ -14,7 +9,3 @@
       - "Data.Mergeful.Collection.mergeSyncResponseIgnoreProblems"
 - ignore:
     name: "Use const"
-    within:
-      - "Data.Mergeful.Collection.mergeSyncResponseFromServer"
-      - "Data.Mergeful.CollectionSpec.spec"
-      - "Data.Mergeful.Item.mergeFromServer"

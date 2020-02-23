@@ -80,7 +80,7 @@ data ClientItem a
   | ClientItemSyncedButChanged !(Timed a)
   -- | There was an item, and it has been deleted locally, but the server has not been made aware of this.
   | ClientDeleted !ServerTime
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Ord, Generic)
 
 instance Validity a => Validity (ClientItem a)
 
@@ -121,7 +121,7 @@ data ServerItem a
   = ServerEmpty
   -- | There is an item on the server side, and it was last synced at the given 'ServerTime'.
   | ServerFull !(Timed a)
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Ord, Generic)
 
 instance Validity a => Validity (ServerItem a)
 
@@ -158,7 +158,7 @@ data ItemSyncRequest a
   -- | There was an item locally that has been deleted but the
   -- deletion wasn't synced to the server yet.
   | ItemSyncRequestDeletedLocally !ServerTime
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Ord, Generic)
 
 instance Validity a => Validity (ItemSyncRequest a)
 
@@ -246,7 +246,7 @@ data ItemSyncResponse a
   -- The server left its item deleted, the client can either delete its item too
   -- or deal with the conflict somehow, and then try to re-sync.
   | ItemSyncResponseConflictServerDeleted
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Ord, Generic)
 
 instance Validity a => Validity (ItemSyncResponse a)
 

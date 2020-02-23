@@ -1,9 +1,10 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -51,7 +52,7 @@ import Data.Mergeful.Timed
 data DirTree a
   = NodeFile a
   | NodeDir (DirForest a)
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Generic, Functor)
 
 instance (Validity a, Ord a) => Validity (DirTree a)
 
@@ -59,7 +60,7 @@ newtype DirForest a =
   DirForest
     { unDirForest :: Map FilePath (DirTree a)
     }
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Generic, Functor)
 
 instance (Validity a, Ord a) => Validity (DirForest a) where
   validate df@(DirForest m) =
