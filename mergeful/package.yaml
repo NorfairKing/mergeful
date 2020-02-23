@@ -23,6 +23,7 @@ library:
     - filepath
     - mtl
     - path
+    - path-io
     - text
     - validity
     - validity-containers

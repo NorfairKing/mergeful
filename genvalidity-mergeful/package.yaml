@@ -20,12 +20,14 @@ library:
   dependencies:
     - QuickCheck
     - containers
+    - filepath
     - genvalidity
     - genvalidity-containers
     - genvalidity-path
     - genvalidity-time
     - mergeful
     - path
+    - path-io
 
 tests:
   mergeful-test:
@@ -37,7 +39,9 @@ tests:
     - -with-rtsopts=-N
     dependencies:
       - QuickCheck
+      - bytestring
       - containers
+      - genvalidity-bytestring
       - genvalidity-hspec
       - genvalidity-hspec-aeson
       - genvalidity-mergeful
@@ -46,6 +50,8 @@ tests:
       - mergeful
       - mtl
       - path
+      - path
+      - path-io
       - pretty-show
       - random
       - time
