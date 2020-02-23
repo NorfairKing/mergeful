@@ -25,6 +25,7 @@ library:
     - genvalidity-path
     - genvalidity-time
     - mergeful
+    - path
 
 tests:
   mergeful-test:
