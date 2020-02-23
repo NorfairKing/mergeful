@@ -557,14 +557,15 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
           -- Merge the synced but changed (the only ones that could have caused a conflict)
           -- with the ones that the response indicated were a conflict.
           , M.intersectionWith
-              itemMergeStrategyMergeChangeConflict
+              (\ci (Timed si st) -> Timed (itemMergeStrategyMergeChangeConflict ci si) st)
               (M.map timedValue $ clientStoreSyncedButChangedItems cs)
               syncResponseConflicts
           -- Of the items that the server changed but the client deleted,
           -- keep the ones that the strategy wants to keep.
           , M.mapMaybe id $
             M.intersectionWith
-              (\_ t -> itemMergeStrategyMergeClientDeletedConflict t)
+              (\_ (Timed si st) ->
+                 Timed <$> itemMergeStrategyMergeClientDeletedConflict si <*> pure st)
               (clientStoreDeletedItems cs)
               syncResponseConflictsClientDeleted
           , newModifiedItems
