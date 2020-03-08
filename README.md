@@ -17,3 +17,7 @@ See the following blogposts for (many) more details:
 - https://cs-syd.eu/posts/2019-10-14-mergeful-value
 - https://cs-syd.eu/posts/2019-11-28-mergeful-item
 - https://cs-syd.eu/posts/2019-12-28-mergeful-collection
+
+or the talk at Haskellerz:
+
+https://www.youtube.com/watch?v=MkbhHmAk47k
