@@ -56,6 +56,8 @@ data DirTree a
 
 instance (Validity a, Ord a) => Validity (DirTree a)
 
+instance (NFData a, Ord a) => NFData (DirTree a)
+
 newtype DirForest a =
   DirForest
     { unDirForest :: Map FilePath (DirTree a)
@@ -100,6 +102,8 @@ instance (Validity a, Ord a) => Validity (DirForest a) where
                             ]
                     ]
       ]
+
+instance (NFData a, Ord a) => NFData (DirForest a)
 
 emptyDirForest :: DirForest a
 emptyDirForest = DirForest M.empty

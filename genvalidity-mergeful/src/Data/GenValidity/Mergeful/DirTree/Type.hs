@@ -19,8 +19,8 @@ instance (Ord a, GenUnchecked a) => GenUnchecked (DirTree a)
 instance (Ord a, GenUnchecked a, GenInvalid a) => GenInvalid (DirTree a)
 
 instance (Ord a, GenValid a) => GenValid (DirTree a) where
-  genValid = genValidStructurally
-  shrinkValid = shrinkValidStructurally
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
 instance (Ord a, GenUnchecked a) => GenUnchecked (DirForest a)
 
