@@ -1,32 +1,30 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Data.GenValidity.Mergeful.Collection where
 
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.Set (Set)
-import qualified Data.Set as S
-
-import Data.Traversable
-
 import Data.GenValidity
 import Data.GenValidity.Containers ()
-import Data.GenValidity.Time ()
-
-import Test.QuickCheck
-
 import Data.GenValidity.Mergeful.Item ()
-
+import Data.GenValidity.Time ()
+import Data.Map (Map)
+import qualified Data.Map as M
 import Data.Mergeful
+import Data.Set (Set)
+import qualified Data.Set as S
+import Data.Traversable
+import Test.QuickCheck
 
 instance GenUnchecked ClientId
 
 instance GenValid ClientId
 
-instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (ClientStore i a)
+instance (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
+         GenUnchecked (ClientStore ci si a)
 
-instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (ClientStore i a) where
+instance (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
+         GenValid (ClientStore ci si a) where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- genValid
@@ -39,15 +37,17 @@ instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (ClientStore i a) w
       pure ClientStore {..}
   shrinkValid = shrinkValidStructurally
 
-instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (ServerStore i a)
+instance (GenUnchecked si, Ord si, GenUnchecked a) => GenUnchecked (ServerStore si a)
 
-instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (ServerStore i a) where
+instance (GenValid si, Show si, Ord si, GenValid a) => GenValid (ServerStore si a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (SyncRequest i a)
+instance (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
+         GenUnchecked (SyncRequest ci si a)
 
-instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncRequest i a) where
+instance (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
+         GenValid (SyncRequest ci si a) where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- genValid
@@ -60,15 +60,17 @@ instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncRequest i a) w
       pure SyncRequest {..}
   shrinkValid = shrinkValidStructurally
 
-instance GenUnchecked i => GenUnchecked (ClientAddition i)
+instance GenUnchecked si => GenUnchecked (ClientAddition si)
 
-instance GenValid i => GenValid (ClientAddition i) where
+instance GenValid si => GenValid (ClientAddition si) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance (GenUnchecked i, Ord i, GenUnchecked a) => GenUnchecked (SyncResponse i a)
+instance (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
+         GenUnchecked (SyncResponse ci si a)
 
-instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncResponse i a) where
+instance (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
+         GenValid (SyncResponse ci si a) where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- scale (* 2) genValid
@@ -81,7 +83,7 @@ instance (GenValid i, Show i, Ord i, GenValid a) => GenValid (SyncResponse i a) 
       (s13, s14) <- splitSet s06
       (s15, s16) <- splitSet s07
       syncResponseClientAdded <-
-        do m <- genValid :: Gen (Map ClientId ())
+        do m <- genValid :: Gen (Map ci ())
            if S.null s08
              then pure M.empty
              else forM m $ \() -> ClientAddition <$> elements (S.toList s08) <*> genValid
