@@ -42,13 +42,23 @@ module Data.Mergeful.Item
   ( initialClientItem,
     initialItemSyncRequest,
     makeItemSyncRequest,
+    mergeItemSyncResponseFromServer,
+    mergeItemSyncResponseFromClient,
+    mergeItemSyncResponseUsingCRDT,
+    mergeItemSyncResponseUsingStrategy,
+    mergeFromServer,
+    mergeFromServerStrategy,
+    mergeFromClient,
+    mergeFromClientStrategy,
+    mergeUsingCRDT,
+    mergeUsingCRDTStrategy,
+    ItemMergeStrategy (..),
+    ChangeConflictResolution (..),
+    ClientDeletedConflictResolution (..),
+    ServerDeletedConflictResolution (..),
+    mergeUsingStrategy,
     mergeItemSyncResponseRaw,
     ItemMergeResult (..),
-    mergeItemSyncResponseIgnoreProblems,
-    mergeIgnoringProblems,
-    mergeFromServer,
-    ItemMergeStrategy (..),
-    mergeUsingStrategy,
 
     -- * Server side
     initialServerItem,
@@ -356,47 +366,45 @@ mergeItemSyncResponseRaw cs sr =
         ItemSyncResponseConflictClientDeleted si -> MergeConflictClientDeleted si
         _ -> MergeMismatch
 
--- | Merge an 'ItemSyncResponse' into the current 'ClientItem'.
---
--- This function ignores any problems that may occur.
--- In the case of a conclict, it will just not update the client item.
--- The next sync request will then produce a conflict again.
---
--- > mergeItemSyncResponseIgnoreProblems cs = mergeIgnoringProblems cs . mergeItemSyncResponseRaw cs
-mergeItemSyncResponseIgnoreProblems :: ClientItem a -> ItemSyncResponse a -> ClientItem a
-mergeItemSyncResponseIgnoreProblems cs = mergeIgnoringProblems cs . mergeItemSyncResponseRaw cs
+mergeItemSyncResponseUsingStrategy :: ItemMergeStrategy a -> ClientItem a -> ItemSyncResponse a -> ClientItem a
+mergeItemSyncResponseUsingStrategy strat ci sr = mergeUsingStrategy strat ci $ mergeItemSyncResponseRaw ci sr
+
+mergeItemSyncResponseFromServer :: ClientItem a -> ItemSyncResponse a -> ClientItem a
+mergeItemSyncResponseFromServer = mergeItemSyncResponseUsingStrategy mergeFromServerStrategy
+
+mergeItemSyncResponseFromClient :: ClientItem a -> ItemSyncResponse a -> ClientItem a
+mergeItemSyncResponseFromClient = mergeItemSyncResponseUsingStrategy mergeFromClientStrategy
+
+mergeItemSyncResponseUsingCRDT :: (a -> a -> a) -> ClientItem a -> ItemSyncResponse a -> ClientItem a
+mergeItemSyncResponseUsingCRDT = mergeItemSyncResponseUsingStrategy . mergeUsingCRDTStrategy
 
 -- | A strategy to merge conflicts for item synchronisation
 data ItemMergeStrategy a
   = ItemMergeStrategy
       { -- | How to merge modification conflicts
-        itemMergeStrategyMergeChangeConflict :: a -> a -> a,
+        itemMergeStrategyMergeChangeConflict :: a -> a -> ChangeConflictResolution a,
         -- | How to merge conflicts where the client deleted an item that the server modified
-        itemMergeStrategyMergeClientDeletedConflict :: a -> Maybe a,
+        itemMergeStrategyMergeClientDeletedConflict :: a -> ClientDeletedConflictResolution,
         -- | How to merge conflicts where the server deleted an item that the client modified
-        itemMergeStrategyMergeServerDeletedConflict :: a -> Maybe a
+        itemMergeStrategyMergeServerDeletedConflict :: a -> ServerDeletedConflictResolution
       }
   deriving (Generic)
 
--- | Ignore any merge problems in a 'ItemMergeResult'.
---
--- This function just returns the original 'ClientItem' if anything other than 'MergeSuccess' occurs.
---
--- This function ignores any problems that may occur.
--- In the case of a conclict, it will just not update the client item.
--- The next sync request will then produce a conflict again.
---
--- Pro: does not lose data
---
--- __Con: Clients will diverge when a conflict occurs__
-mergeIgnoringProblems :: ClientItem a -> ItemMergeResult a -> ClientItem a
-mergeIgnoringProblems cs mr =
-  case mr of
-    MergeSuccess cs' -> cs'
-    MergeConflict _ _ -> cs
-    MergeConflictServerDeleted _ -> cs
-    MergeConflictClientDeleted _ -> cs
-    MergeMismatch -> cs
+data ChangeConflictResolution a
+  = KeepLocal
+  | TakeRemote
+  | Merged a
+  deriving (Show, Eq, Generic)
+
+data ClientDeletedConflictResolution
+  = TakeRemoteChange
+  | StayDeleted
+  deriving (Show, Eq, Generic)
+
+data ServerDeletedConflictResolution
+  = KeepLocalChange
+  | Delete
+  deriving (Show, Eq, Generic)
 
 -- | Resolve an 'ItemMergeResult' using a given merge strategy.
 --
@@ -408,17 +416,29 @@ mergeIgnoringProblems cs mr =
 -- * Idempotent
 -- * The same on all clients
 mergeUsingStrategy :: ItemMergeStrategy a -> ClientItem a -> ItemMergeResult a -> ClientItem a
-mergeUsingStrategy ItemMergeStrategy {..} cs mr =
+mergeUsingStrategy ItemMergeStrategy {..} ci mr =
   case mr of
-    MergeSuccess cs' -> cs'
-    MergeConflict a1 (Timed a2 st) ->
-      ClientItemSynced $ Timed (itemMergeStrategyMergeChangeConflict a1 a2) st
-    MergeConflictClientDeleted (Timed sa st) ->
-      maybe ClientEmpty ClientItemSynced $
-        Timed <$> itemMergeStrategyMergeClientDeletedConflict sa <*> pure st
-    MergeConflictServerDeleted ca ->
-      maybe ClientEmpty ClientAdded (itemMergeStrategyMergeServerDeletedConflict ca)
-    MergeMismatch -> cs
+    MergeSuccess ci' -> ci'
+    MergeConflict a1 ri -> mergeChangeConflict itemMergeStrategyMergeChangeConflict ci a1 ri
+    MergeConflictClientDeleted ri -> mergeClientDeletedConflict itemMergeStrategyMergeClientDeletedConflict ri
+    MergeConflictServerDeleted ca -> mergeServerDeletedConflict itemMergeStrategyMergeServerDeletedConflict ca
+    MergeMismatch -> ci
+
+mergeChangeConflict :: (a -> a -> ChangeConflictResolution a) -> ClientItem a -> a -> Timed a -> ClientItem a
+mergeChangeConflict func ci a1 ri@(Timed a2 st) = case func a1 a2 of
+  KeepLocal -> ci
+  TakeRemote -> ClientItemSynced ri
+  Merged ma -> ClientItemSynced $ Timed ma st
+
+mergeClientDeletedConflict :: (a -> ClientDeletedConflictResolution) -> Timed a -> ClientItem a
+mergeClientDeletedConflict func ri@(Timed sa _) = case func sa of
+  TakeRemoteChange -> ClientItemSynced ri
+  StayDeleted -> ClientEmpty
+
+mergeServerDeletedConflict :: (a -> ServerDeletedConflictResolution) -> a -> ClientItem a
+mergeServerDeletedConflict func ca = case func ca of
+  KeepLocalChange -> ClientAdded ca
+  Delete -> ClientEmpty
 
 -- | Resolve an 'ItemMergeResult' by taking whatever the server gave the client.
 --
@@ -427,12 +447,54 @@ mergeUsingStrategy ItemMergeStrategy {..} cs mr =
 -- __Con: Conflicting updates will be lost.__
 mergeFromServer :: ClientItem a -> ItemMergeResult a -> ClientItem a
 mergeFromServer =
-  mergeUsingStrategy
-    ItemMergeStrategy
-      { itemMergeStrategyMergeChangeConflict = \_ serverItem -> serverItem,
-        itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem,
-        itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
-      }
+  mergeUsingStrategy mergeFromServerStrategy
+
+-- | A merge strategy that takes whatever the server gave the client.
+--
+-- Pro: Clients will converge on the same value.
+--
+-- __Con: Conflicting updates will be lost.__
+mergeFromServerStrategy :: ItemMergeStrategy a
+mergeFromServerStrategy =
+  ItemMergeStrategy
+    { itemMergeStrategyMergeChangeConflict = \_ _ -> TakeRemote,
+      itemMergeStrategyMergeClientDeletedConflict = \_ -> TakeRemoteChange,
+      itemMergeStrategyMergeServerDeletedConflict = \_ -> Delete
+    }
+
+-- | Resolve an 'ItemMergeResult' by keeping whatever the client had.
+--
+-- Pro: does not lose data
+--
+-- __Con: Clients will diverge when a conflict occurs__
+mergeFromClient :: ClientItem a -> ItemMergeResult a -> ClientItem a
+mergeFromClient = mergeUsingStrategy mergeFromClientStrategy
+
+-- | A merge strategy that keeps whatever the client had.
+--
+-- Pro: does not lose data
+--
+-- __Con: Clients will diverge when a conflict occurs__
+mergeFromClientStrategy :: ItemMergeStrategy a
+mergeFromClientStrategy =
+  ItemMergeStrategy
+    { itemMergeStrategyMergeChangeConflict = \_ _ -> KeepLocal,
+      itemMergeStrategyMergeClientDeletedConflict = \_ -> StayDeleted,
+      itemMergeStrategyMergeServerDeletedConflict = \_ -> KeepLocalChange
+    }
+
+mergeUsingCRDT :: (a -> a -> a) -> ClientItem a -> ItemMergeResult a -> ClientItem a
+mergeUsingCRDT = mergeUsingStrategy . mergeUsingCRDTStrategy
+
+-- | A merge strategy that uses a CRDT merging function to merge items.
+--
+-- In case of other-than-change conflicts, this will be the same as the 'mergeFromServerStrategy' strategy.
+-- If this is not what you want, create your own 'ItemMergeStrategy' manually.
+mergeUsingCRDTStrategy :: (a -> a -> a) -> ItemMergeStrategy a
+mergeUsingCRDTStrategy merge =
+  mergeFromServerStrategy
+    { itemMergeStrategyMergeChangeConflict = \a1 a2 -> Merged (merge a1 a2)
+    }
 
 -- | Serve an 'ItemSyncRequest' using the current 'ServerItem', producing an 'ItemSyncResponse' and a new 'ServerItem'.
 processServerItemSync :: ServerItem a -> ItemSyncRequest a -> (ItemSyncResponse a, ServerItem a)

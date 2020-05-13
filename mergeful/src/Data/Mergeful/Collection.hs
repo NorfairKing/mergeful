@@ -52,8 +52,9 @@ module Data.Mergeful.Collection
     deleteItemFromClientStore,
     initialSyncRequest,
     makeSyncRequest,
-    mergeSyncResponseIgnoreProblems,
     mergeSyncResponseFromServer,
+    mergeSyncResponseFromClient,
+    mergeSyncResponseUsingCRDT,
 
     -- * Custom merging
     ItemMergeStrategy (..),
@@ -542,39 +543,55 @@ makeSyncRequest ClientStore {..} =
       syncRequestDeletedItems = clientStoreDeletedItems
     }
 
--- | Merge an 'SyncResponse' into the current 'ClientStore'.
+data ClientSyncProcessor ci si a (m :: * -> *)
+  = ClientSyncProcessor
+      { clientSyncProcessorSyncClientAdded :: Map ci (ClientAddition si) -> m (),
+        clientSyncProcessorSyncClientChanged :: Map si ServerTime -> m (),
+        clientSyncProcessorSyncClientDeleted :: Set si -> m (),
+        clientSyncProcessorSyncServerAdded :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncServerChanged :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncServerDeleted :: Set si -> m (),
+        clientSyncProcessorSyncChangeConflict :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncConflictsClientDeleted :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncConflictsServerDeleted :: Set si -> m ()
+      }
+  deriving (Generic)
+
+mergeSyncResponseCustom :: Monad m => ClientSyncProcessor ci si a m -> SyncResponse ci si a -> m ()
+mergeSyncResponseCustom ClientSyncProcessor {..} SyncResponse {..} = do
+  -- The order here matters!
+  clientSyncProcessorSyncChangeConflict syncResponseConflicts
+  clientSyncProcessorSyncConflictsClientDeleted syncResponseConflictsClientDeleted
+  clientSyncProcessorSyncConflictsServerDeleted syncResponseConflictsServerDeleted
+  clientSyncProcessorSyncServerAdded syncResponseServerAdded
+  clientSyncProcessorSyncServerChanged syncResponseServerChanged
+  clientSyncProcessorSyncServerDeleted syncResponseServerDeleted
+  clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
+  clientSyncProcessorSyncClientChanged syncResponseClientChanged
+  clientSyncProcessorSyncClientAdded syncResponseClientAdded
+
+-- | Merge a 'SyncResponse' into the current 'ClientStore' by taking whatever the server gave the client in case of conflict.
 --
--- This function ignores any problems that may occur.
--- In the case of a conclict, it will just not update the client item.
--- The next sync request will then produce a conflict again.
+-- Pro: Clients will converge on the same value.
+--
+-- __Con: Conflicting updates will be lost.__
+mergeSyncResponseFromServer ::
+  (Ord ci, Ord si) => ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a
+mergeSyncResponseFromServer =
+  mergeSyncResponseUsingStrategy mergeFromServerStrategy
+
+-- | Merge a 'SyncResponse' into the current 'ClientStore' by keeping whatever the client had in case of conflict.
 --
 -- Pro: No data will be lost
 --
 -- __Con: Clients will diverge when conflicts occur.__
-mergeSyncResponseIgnoreProblems ::
+mergeSyncResponseFromClient ::
   (Ord ci, Ord si) => ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a
-mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
-  let (addedItemsLeftovers, newSyncedItems) =
-        mergeAddedItems (clientStoreAddedItems cs) syncResponseClientAdded
-      (syncedButNotChangedLeftovers, newModifiedItems) =
-        mergeSyncedButChangedItems (clientStoreSyncedButChangedItems cs) syncResponseClientChanged
-      deletedItemsLeftovers =
-        mergeDeletedItems (clientStoreDeletedItems cs) syncResponseClientDeleted
-      synced =
-        M.unions
-          [ newSyncedItems,
-            syncResponseServerAdded,
-            syncResponseServerChanged,
-            newModifiedItems,
-            clientStoreSyncedItems cs
-          ]
-   in ClientStore
-        { clientStoreAddedItems = addedItemsLeftovers,
-          clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced,
-          clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced,
-          clientStoreSyncedItems =
-            synced `M.difference` M.fromSet (const ()) syncResponseServerDeleted
-        }
+mergeSyncResponseFromClient = mergeSyncResponseUsingStrategy mergeFromClientStrategy
+
+-- | Merge a 'SyncResponse' into the current 'ClientStore' by using the given GADT merging function in case of conflict
+mergeSyncResponseUsingCRDT :: (Ord ci, Ord si) => (a -> a -> a) -> ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a
+mergeSyncResponseUsingCRDT = mergeSyncResponseUsingStrategy . mergeUsingCRDTStrategy
 
 -- | Merge an 'SyncResponse' into the current 'ClientStore' with the given merge strategy.
 --
@@ -606,15 +623,20 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
             -- Merge the synced but changed (the only ones that could have caused a conflict)
             -- with the ones that the response indicated were a conflict.
             M.intersectionWith
-              (\ci (Timed si st) -> Timed (itemMergeStrategyMergeChangeConflict ci si) st)
-              (M.map timedValue $ clientStoreSyncedButChangedItems cs)
+              ( \c@(Timed ci _) s@(Timed si st) -> case itemMergeStrategyMergeChangeConflict ci si of
+                  KeepLocal -> c
+                  TakeRemote -> s
+                  Merged mi -> Timed mi st
+              )
+              (clientStoreSyncedButChangedItems cs)
               syncResponseConflicts,
             -- Of the items that the server changed but the client deleted,
             -- keep the ones that the strategy wants to keep.
             M.mapMaybe id $
               M.intersectionWith
-                ( \_ (Timed si st) ->
-                    Timed <$> itemMergeStrategyMergeClientDeletedConflict si <*> pure st
+                ( \_ (Timed si st) -> case itemMergeStrategyMergeClientDeletedConflict si of
+                    TakeRemoteChange -> Just $ Timed si st
+                    StayDeleted -> Nothing
                 )
                 (clientStoreDeletedItems cs)
                 syncResponseConflictsClientDeleted,
@@ -631,48 +653,6 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
           clientStoreSyncedItems =
             synced `M.difference` M.fromSet (const ()) syncResponseServerDeleted
         }
-
-data ClientSyncProcessor ci si a (m :: * -> *)
-  = ClientSyncProcessor
-      { clientSyncProcessorSyncClientAdded :: Map ci (ClientAddition si) -> m (),
-        clientSyncProcessorSyncClientChanged :: Map si ServerTime -> m (),
-        clientSyncProcessorSyncClientDeleted :: Set si -> m (),
-        clientSyncProcessorSyncServerAdded :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncServerChanged :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncServerDeleted :: Set si -> m (),
-        clientSyncProcessorSyncChangeConflict :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncConflictsClientDeleted :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncConflictsServerDeleted :: Set si -> m ()
-      }
-  deriving (Generic)
-
-mergeSyncResponseCustom :: Monad m => ClientSyncProcessor ci si a m -> SyncResponse ci si a -> m ()
-mergeSyncResponseCustom ClientSyncProcessor {..} SyncResponse {..} = do
-  -- The order here matters!
-  clientSyncProcessorSyncChangeConflict syncResponseConflicts
-  clientSyncProcessorSyncConflictsClientDeleted syncResponseConflictsClientDeleted
-  clientSyncProcessorSyncConflictsServerDeleted syncResponseConflictsServerDeleted
-  clientSyncProcessorSyncServerAdded syncResponseServerAdded
-  clientSyncProcessorSyncServerChanged syncResponseServerChanged
-  clientSyncProcessorSyncServerDeleted syncResponseServerDeleted
-  clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
-  clientSyncProcessorSyncClientChanged syncResponseClientChanged
-  clientSyncProcessorSyncClientAdded syncResponseClientAdded
-
--- | Merge an 'SyncResponse' into the current 'ClientStore' by taking whatever the server gave the client.
---
--- Pro: Clients will converge on the same value.
---
--- __Con: Conflicting updates will be lost.__
-mergeSyncResponseFromServer ::
-  (Ord ci, Ord si) => ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a
-mergeSyncResponseFromServer =
-  mergeSyncResponseUsingStrategy
-    ItemMergeStrategy
-      { itemMergeStrategyMergeChangeConflict = \_ serverItem -> serverItem,
-        itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem,
-        itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
-      }
 
 -- | Merge the local added items with the ones that the server has acknowledged as added.
 mergeAddedItems ::

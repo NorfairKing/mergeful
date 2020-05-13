@@ -37,9 +37,15 @@ spec = do
   describe "mergeItemSyncResponseRaw"
     $ it "produces valid client stores"
     $ producesValidsOnValids2 (mergeItemSyncResponseRaw @Int)
-  describe "mergeItemSyncResponseIgnoreProblems"
+  describe "mergeItemSyncResponseFromServer"
     $ it "produces valid client stores"
-    $ producesValidsOnValids2 (mergeItemSyncResponseIgnoreProblems @Int)
+    $ producesValidsOnValids2 (mergeItemSyncResponseFromServer @Int)
+  describe "mergeItemSyncResponseFromClient"
+    $ it "produces valid client stores"
+    $ producesValidsOnValids2 (mergeItemSyncResponseFromClient @Int)
+  describe "mergeItemSyncResponseUsingCRDT"
+    $ it "produces valid client stores"
+    $ producesValidsOnValids2 (mergeItemSyncResponseUsingCRDT @Int max)
   describe "processServerItemSync" $ do
     it "produces valid responses and stores" $ producesValidsOnValids2 (processServerItemSync @Int)
     it "makes no changes if the sync request reflects the state of the empty server" $ do
@@ -150,19 +156,12 @@ spec = do
       syncingSpec @Int mergeFromServer
       emptyResponseSpec @Int mergeFromServer
     describe "fromClient" $ do
-      syncingSpec @Int mergeIgnoringProblems
-      xdescribe "does not hold" $ emptyResponseSpec @Int mergeIgnoringProblems
+      syncingSpec @Int mergeFromClient
+      xdescribe "does not hold" $ emptyResponseSpec @Int mergeFromClient
     describe "gadt" $ do
-      syncingSpec (mergeUsingStrategy gcounterStrategy)
-      emptyResponseSpec (mergeUsingStrategy gcounterStrategy)
-
-gcounterStrategy :: ItemMergeStrategy Int
-gcounterStrategy =
-  ItemMergeStrategy
-    { itemMergeStrategyMergeChangeConflict = max,
-      itemMergeStrategyMergeClientDeletedConflict = Just,
-      itemMergeStrategyMergeServerDeletedConflict = const Nothing
-    }
+      let merge = mergeUsingCRDT @Int max
+      syncingSpec merge
+      emptyResponseSpec merge
 
 syncingSpec ::
   forall a.

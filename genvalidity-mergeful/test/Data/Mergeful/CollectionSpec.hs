@@ -131,12 +131,52 @@ spec = do
   describe "mergeDeletedItems"
     $ it "produces valid results"
     $ producesValidsOnValids2 (mergeDeletedItems @Int @Int)
-  describe "mergeSyncResponseIgnoreProblems"
+  describe "mergeSyncResponseFromServer"
     $ it "produces valid requests"
     $ forAllValid
     $ \store ->
       forAllValid $ \response ->
-        let res = mergeSyncResponseIgnoreProblems @ClientId @Int @Int store response
+        let res = mergeSyncResponseFromServer @ClientId @Int @Int store response
+         in case prettyValidate res of
+              Right _ -> pure ()
+              Left err ->
+                expectationFailure $
+                  unlines
+                    [ "Store:",
+                      ppShow store,
+                      "Response:",
+                      ppShow response,
+                      "Invalid result:",
+                      ppShow res,
+                      "error:",
+                      err
+                    ]
+  describe "mergeSyncResponseFromClient"
+    $ it "produces valid requests"
+    $ forAllValid
+    $ \store ->
+      forAllValid $ \response ->
+        let res = mergeSyncResponseFromClient @ClientId @Int @Int store response
+         in case prettyValidate res of
+              Right _ -> pure ()
+              Left err ->
+                expectationFailure $
+                  unlines
+                    [ "Store:",
+                      ppShow store,
+                      "Response:",
+                      ppShow response,
+                      "Invalid result:",
+                      ppShow res,
+                      "error:",
+                      err
+                    ]
+  describe "mergeSyncResponseUsingCRDT"
+    $ it "produces valid requests"
+    $ forAllValid
+    $ \store ->
+      forAllValid $ \response ->
+        let res = mergeSyncResponseUsingCRDT @ClientId @Int @Int max store response
          in case prettyValidate res of
               Right _ -> pure ()
               Left err ->
@@ -157,38 +197,27 @@ spec = do
       ( \store request ->
           evalD $ processServerSync @ClientId @UUID genD (store :: ServerStore UUID Int) request
       )
-  describe "Syncing with mergeSyncResponseIgnoreProblems" $ do
-    mergeFunctionSpec @Int mergeSyncResponseIgnoreProblems
-    noDataLossSpec @Int mergeSyncResponseIgnoreProblems
+  describe "Syncing with mergeSyncResponseFromClient" $ do
+    mergeFunctionSpec @Int mergeSyncResponseFromClient
+    noDataLossSpec @Int mergeSyncResponseFromClient
     xdescribe "does not hold" $ do
-      emptyResponseSpec @Int mergeSyncResponseIgnoreProblems
-      noDivergenceSpec @Int mergeSyncResponseIgnoreProblems
+      emptyResponseSpec @Int mergeSyncResponseFromClient
+      noDivergenceSpec @Int mergeSyncResponseFromClient
   describe "Syncing with mergeSyncResponseFromServer" $ do
     mergeFunctionSpec @Int mergeSyncResponseFromServer
     noDivergenceSpec @Int mergeSyncResponseFromServer
     emptyResponseSpec @Int mergeSyncResponseFromServer
-    noDifferentExceptForConflicts @Int mergeSyncResponseFromServer mergeSyncResponseIgnoreProblems
+    noDifferentExceptForConflicts @Int mergeSyncResponseFromServer mergeSyncResponseFromClient
     xdescribe "does not hold" $ noDataLossSpec @Int mergeSyncResponseFromServer
   describe "Syncing with mergeSyncResponseUsingStrategy with a GCounter" $ do
-    let strat :: ItemMergeStrategy Int
-        strat =
-          ItemMergeStrategy
-            { itemMergeStrategyMergeChangeConflict = \clientItem serverItem -> max clientItem serverItem,
-              itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem,
-              itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
-            }
-        mergeFunc ::
-          (Ord ci, Ord si) =>
-          ClientStore ci si Int ->
-          SyncResponse ci si Int ->
-          ClientStore ci si Int
-        mergeFunc = mergeSyncResponseUsingStrategy strat
-    mergeFunctionSpec @Int mergeFunc
-    noDataLossSpec @Int mergeFunc
-    noDivergenceSpec @Int mergeFunc
-    emptyResponseSpec @Int mergeFunc
-    noDifferentExceptForConflicts @Int mergeFunc mergeSyncResponseIgnoreProblems
-    noDifferentExceptForConflicts @Int mergeFunc mergeSyncResponseFromServer
+    let mergeFunc :: (Ord ci, Ord si) => ClientStore ci si Int -> SyncResponse ci si Int -> ClientStore ci si Int
+        mergeFunc = mergeSyncResponseUsingCRDT max
+    mergeFunctionSpec mergeFunc
+    noDataLossSpec mergeFunc
+    noDivergenceSpec mergeFunc
+    emptyResponseSpec mergeFunc
+    noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromClient
+    noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromServer
 
 mergeFunctionSpec ::
   forall a.
@@ -563,7 +592,7 @@ noDataLossSpec mergeFunc =
                     `shouldBe` (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed i2 time2)})
                   sstore3 `shouldBe` sstore2
                 -- Client B merges the response
-                let cBstore2 = mergeSyncResponseIgnoreProblems @ClientId @UUID cBstore1 resp2
+                let cBstore2 = mergeSyncResponseFromClient @ClientId @UUID cBstore1 resp2
                 -- Client does not update, but keeps its conflict
                 lift $
                   cBstore2
@@ -679,7 +708,7 @@ noDifferentExceptForConflicts ::
   Spec
 noDifferentExceptForConflicts mergeFunc1 mergeFunc2 =
   describe "mergeSyncResponseFromServer"
-    $ it "only differs from mergeSyncResponseIgnoreProblems on conflicts"
+    $ it "only differs from mergeSyncResponseFromClient on conflicts"
     $ forAllValid
     $ \cstore ->
       forAllValid $ \sresp@SyncResponse {..} -> do
