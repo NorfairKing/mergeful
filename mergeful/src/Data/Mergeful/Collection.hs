@@ -657,7 +657,7 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
           ]
    in ClientStore
         { clientStoreAddedItems = addedItemsLeftovers,
-          clientStoreSyncedButChangedItems = newSyncedButChangedItems `M.difference` synced,
+          clientStoreSyncedButChangedItems = newSyncedButChangedItems,
           clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced,
           clientStoreSyncedItems = synced
         }
