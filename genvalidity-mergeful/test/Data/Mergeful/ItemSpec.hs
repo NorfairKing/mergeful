@@ -310,8 +310,8 @@ syncingSpec mergeStrategy = do
             req2 = makeItemSyncRequest cstore2
             (resp2, sstore3) = processServerItemSync sstore2 req2
             cstore3 = mergeSyncResponse cstore2 resp2
-        cstore2 `shouldBe` cstore3
-        sstore2 `shouldBe` sstore3
+        cstore3 `shouldBe` cstore2
+        sstore3 `shouldBe` sstore2
 
 emptyResponseSpec ::
   forall a.

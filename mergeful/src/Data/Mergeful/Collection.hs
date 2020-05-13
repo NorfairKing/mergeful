@@ -634,7 +634,7 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
             -- keep the ones that the strategy wants to keep.
             M.mapMaybe id $
               M.intersectionWith
-                ( \_ (Timed si st) -> case itemMergeStrategyMergeClientDeletedConflict si of
+                ( \ci (Timed si st) -> case itemMergeStrategyMergeClientDeletedConflict si of
                     TakeRemoteChange -> Just $ Timed si st
                     StayDeleted -> Nothing
                 )

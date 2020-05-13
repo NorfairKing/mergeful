@@ -420,8 +420,8 @@ mergeUsingStrategy ItemMergeStrategy {..} ci mr =
   case mr of
     MergeSuccess ci' -> ci'
     MergeConflict a1 ri -> mergeChangeConflict itemMergeStrategyMergeChangeConflict ci a1 ri
-    MergeConflictClientDeleted ri -> mergeClientDeletedConflict itemMergeStrategyMergeClientDeletedConflict ri
-    MergeConflictServerDeleted ca -> mergeServerDeletedConflict itemMergeStrategyMergeServerDeletedConflict ca
+    MergeConflictClientDeleted ri -> mergeClientDeletedConflict itemMergeStrategyMergeClientDeletedConflict ci ri
+    MergeConflictServerDeleted ca -> mergeServerDeletedConflict itemMergeStrategyMergeServerDeletedConflict ci ca
     MergeMismatch -> ci
 
 mergeChangeConflict :: (a -> a -> ChangeConflictResolution a) -> ClientItem a -> a -> Timed a -> ClientItem a
@@ -430,14 +430,14 @@ mergeChangeConflict func ci a1 ri@(Timed a2 st) = case func a1 a2 of
   TakeRemote -> ClientItemSynced ri
   Merged ma -> ClientItemSynced $ Timed ma st
 
-mergeClientDeletedConflict :: (a -> ClientDeletedConflictResolution) -> Timed a -> ClientItem a
-mergeClientDeletedConflict func ri@(Timed sa _) = case func sa of
+mergeClientDeletedConflict :: (a -> ClientDeletedConflictResolution) -> ClientItem a -> Timed a -> ClientItem a
+mergeClientDeletedConflict func ci ri@(Timed sa _) = case func sa of
   TakeRemoteChange -> ClientItemSynced ri
-  StayDeleted -> ClientEmpty
+  StayDeleted -> ci -- We can't just use 'ClientEmpty' here because otherwise the 'mergeUsingStrategy' wouldn't be idempotent anymore.
 
-mergeServerDeletedConflict :: (a -> ServerDeletedConflictResolution) -> a -> ClientItem a
-mergeServerDeletedConflict func ca = case func ca of
-  KeepLocalChange -> ClientAdded ca
+mergeServerDeletedConflict :: (a -> ServerDeletedConflictResolution) -> ClientItem a -> a -> ClientItem a
+mergeServerDeletedConflict func ci ca = case func ca of
+  KeepLocalChange -> ci -- We can't just use 'ClientAdded ca' here because otherwise the 'mergeUsingStrategy' wouldn't be idempotent anymore.
   Delete -> ClientEmpty
 
 -- | Resolve an 'ItemMergeResult' by taking whatever the server gave the client.
