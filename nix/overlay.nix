@@ -6,15 +6,15 @@ with final.haskell.lib;
     {
       mergeful =
         failOnAllWarnings (
-          final.haskellPackages.callCabal2nix "mergeful" ( final.gitignoreSource ../mergeful ) {}
+          final.haskellPackages.callCabal2nix "mergeful" (final.gitignoreSource ../mergeful) {}
         );
       genvalidity-mergeful =
         failOnAllWarnings (
-          final.haskellPackages.callCabal2nix "genvalidity-mergeful" ( final.gitignoreSource ../genvalidity-mergeful ) {}
+          final.haskellPackages.callCabal2nix "genvalidity-mergeful" (final.gitignoreSource ../genvalidity-mergeful) {}
         );
       mergeful-persistent =
         failOnAllWarnings (
-          final.haskellPackages.callCabal2nix "mergeful-persistent" ( final.gitignoreSource ../mergeful-persistent ) {}
+          final.haskellPackages.callCabal2nix "mergeful-persistent" (final.gitignoreSource ../mergeful-persistent) {}
         );
     };
   haskellPackages =
@@ -22,7 +22,7 @@ with final.haskell.lib;
       old:
         {
           overrides =
-            final.lib.composeExtensions ( old.overrides or (_: _: {}) ) (
+            final.lib.composeExtensions (old.overrides or (_: _: {})) (
               self: super: final.mergefulPackages
             );
         }

@@ -2,18 +2,17 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Data.Mergeful.ItemSpec
-  ( spec
-  ) where
+  ( spec,
+  )
+where
 
+import Data.GenValidity.Mergeful.Item ()
+import Data.Mergeful.Item
+import Data.Mergeful.Timed
 import Test.Hspec
 import Test.QuickCheck
 import Test.Validity
 import Test.Validity.Aeson
-
-import Data.Mergeful.Item
-import Data.Mergeful.Timed
-
-import Data.GenValidity.Mergeful.Item ()
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
@@ -32,13 +31,15 @@ spec = do
   jsonSpecOnValid @(ItemSyncRequest Int)
   genValidSpec @(ItemSyncResponse Int)
   jsonSpecOnValid @(ItemSyncResponse Int)
-  describe "makeItemSyncRequest" $
-    it "produces valid requests" $ producesValidsOnValids (makeItemSyncRequest @Int)
-  describe "mergeItemSyncResponseRaw" $
-    it "produces valid client stores" $ producesValidsOnValids2 (mergeItemSyncResponseRaw @Int)
-  describe "mergeItemSyncResponseIgnoreProblems" $
-    it "produces valid client stores" $
-    producesValidsOnValids2 (mergeItemSyncResponseIgnoreProblems @Int)
+  describe "makeItemSyncRequest"
+    $ it "produces valid requests"
+    $ producesValidsOnValids (makeItemSyncRequest @Int)
+  describe "mergeItemSyncResponseRaw"
+    $ it "produces valid client stores"
+    $ producesValidsOnValids2 (mergeItemSyncResponseRaw @Int)
+  describe "mergeItemSyncResponseIgnoreProblems"
+    $ it "produces valid client stores"
+    $ producesValidsOnValids2 (mergeItemSyncResponseIgnoreProblems @Int)
   describe "processServerItemSync" $ do
     it "produces valid responses and stores" $ producesValidsOnValids2 (processServerItemSync @Int)
     it "makes no changes if the sync request reflects the state of the empty server" $ do
@@ -47,8 +48,9 @@ spec = do
       let (resp, store2) = processServerItemSync @Int store1 req
       store2 `shouldBe` store1
       resp `shouldBe` ItemSyncResponseInSyncEmpty
-    it "makes no changes if the sync request reflects the state of the full server" $
-      forAllValid $ \i ->
+    it "makes no changes if the sync request reflects the state of the full server"
+      $ forAllValid
+      $ \i ->
         forAllValid $ \st -> do
           let store1 = ServerFull $ Timed i st
               req = ItemSyncRequestKnown st
@@ -56,16 +58,18 @@ spec = do
           store2 `shouldBe` store1
           resp `shouldBe` ItemSyncResponseInSyncFull
     describe "Client changes" $ do
-      it "adds the item that the client tells the server to add" $
-        forAllValid $ \i -> do
+      it "adds the item that the client tells the server to add"
+        $ forAllValid
+        $ \i -> do
           let store1 = ServerEmpty
               req = ItemSyncRequestNew i
           let (resp, store2) = processServerItemSync @Int store1 req
           let time = initialServerTime
           store2 `shouldBe` ServerFull (Timed i time)
           resp `shouldBe` ItemSyncResponseClientAdded time
-      it "changes the item that the client tells the server to change" $
-        forAllValid $ \i ->
+      it "changes the item that the client tells the server to change"
+        $ forAllValid
+        $ \i ->
           forAllValid $ \j ->
             forAllValid $ \st -> do
               let store1 = ServerFull (Timed i st)
@@ -74,8 +78,9 @@ spec = do
               let time = incrementServerTime st
               store2 `shouldBe` ServerFull (Timed j time)
               resp `shouldBe` ItemSyncResponseClientChanged time
-      it "deletes the item that the client tells the server to delete" $
-        forAllValid $ \i ->
+      it "deletes the item that the client tells the server to delete"
+        $ forAllValid
+        $ \i ->
           forAllValid $ \st -> do
             let store1 = ServerFull (Timed i st)
                 req = ItemSyncRequestDeletedLocally st
@@ -83,32 +88,36 @@ spec = do
             store2 `shouldBe` ServerEmpty
             resp `shouldBe` ItemSyncResponseClientDeleted
     describe "Server changes" $ do
-      it "tells the client that there is a new item at the server side" $
-        forAllValid $ \i ->
+      it "tells the client that there is a new item at the server side"
+        $ forAllValid
+        $ \i ->
           forAllValid $ \st -> do
             let store1 = ServerFull (Timed i st)
                 req = ItemSyncRequestPoll
             let (resp, store2) = processServerItemSync @Int store1 req
             store2 `shouldBe` store1
             resp `shouldBe` ItemSyncResponseServerAdded (Timed i st)
-      it "tells the client that there is a modified item at the server side" $
-        forAllValid $ \i ->
+      it "tells the client that there is a modified item at the server side"
+        $ forAllValid
+        $ \i ->
           forAllSubsequent $ \(st, st') -> do
             let store1 = ServerFull (Timed i st')
                 req = ItemSyncRequestKnown st
             let (resp, store2) = processServerItemSync @Int store1 req
             store2 `shouldBe` store1
             resp `shouldBe` ItemSyncResponseServerChanged (Timed i st')
-      it "tells the client that there is a deleted item at the server side" $
-        forAllValid $ \st -> do
+      it "tells the client that there is a deleted item at the server side"
+        $ forAllValid
+        $ \st -> do
           let store1 = ServerEmpty
               req = ItemSyncRequestKnown st
           let (resp, store2) = processServerItemSync @Int store1 req
           store2 `shouldBe` store1
           resp `shouldBe` ItemSyncResponseServerDeleted
     describe "Conflicts" $ do
-      it "notices a conflict if the client and server are trying to sync different items" $
-        forAllValid $ \i ->
+      it "notices a conflict if the client and server are trying to sync different items"
+        $ forAllValid
+        $ \i ->
           forAllValid $ \j ->
             forAllSubsequent $ \(st, st') -> do
               let store1 = ServerFull (Timed i st')
@@ -117,8 +126,9 @@ spec = do
               store2 `shouldBe` store1
               resp `shouldBe` ItemSyncResponseConflict (Timed i st')
       it
-        "notices a server-deleted-conflict if the client has a deleted item and server has a modified item" $
-        forAllValid $ \i ->
+        "notices a server-deleted-conflict if the client has a deleted item and server has a modified item"
+        $ forAllValid
+        $ \i ->
           forAllSubsequent $ \(st, st') -> do
             let store1 = ServerFull (Timed i st')
                 req = ItemSyncRequestDeletedLocally st
@@ -126,8 +136,9 @@ spec = do
             store2 `shouldBe` store1
             resp `shouldBe` ItemSyncResponseConflictClientDeleted (Timed i st')
       it
-        "notices a server-deleted-conflict if the client has a modified item and server has no item" $
-        forAllValid $ \i ->
+        "notices a server-deleted-conflict if the client has a modified item and server has no item"
+        $ forAllValid
+        $ \i ->
           forAllValid $ \st -> do
             let store1 = ServerEmpty
                 req = ItemSyncRequestKnownButChanged (Timed i st)
@@ -148,19 +159,21 @@ spec = do
 gcounterStrategy :: ItemMergeStrategy Int
 gcounterStrategy =
   ItemMergeStrategy
-    { itemMergeStrategyMergeChangeConflict = max
-    , itemMergeStrategyMergeClientDeletedConflict = Just
-    , itemMergeStrategyMergeServerDeletedConflict = const Nothing
+    { itemMergeStrategyMergeChangeConflict = max,
+      itemMergeStrategyMergeClientDeletedConflict = Just,
+      itemMergeStrategyMergeServerDeletedConflict = const Nothing
     }
 
 syncingSpec ::
-     forall a. (Show a, Eq a, GenValid a)
-  => (ClientItem a -> ItemMergeResult a -> ClientItem a)
-  -> Spec
+  forall a.
+  (Show a, Eq a, GenValid a) =>
+  (ClientItem a -> ItemMergeResult a -> ClientItem a) ->
+  Spec
 syncingSpec mergeStrategy = do
   let mergeSyncResponse ci = mergeStrategy ci . mergeItemSyncResponseRaw ci
-  it "it always possible to add an item from scratch" $
-    forAllValid $ \i -> do
+  it "it always possible to add an item from scratch"
+    $ forAllValid
+    $ \i -> do
       let cstore1 = ClientAdded i
       let sstore1 = ServerEmpty
       let req1 = makeItemSyncRequest cstore1
@@ -170,8 +183,9 @@ syncingSpec mergeStrategy = do
       resp1 `shouldBe` ItemSyncResponseClientAdded time
       sstore2 `shouldBe` ServerFull (Timed i time)
       cstore2 `shouldBe` ClientItemSynced (Timed i time)
-  it "succesfully syncs an addition across to a second client" $
-    forAllValid $ \i -> do
+  it "succesfully syncs an addition across to a second client"
+    $ forAllValid
+    $ \i -> do
       let cAstore1 = ClientAdded i
       -- Client B is empty
       let cBstore1 = ClientEmpty
@@ -198,8 +212,9 @@ syncingSpec mergeStrategy = do
       cBstore2 `shouldBe` ClientItemSynced (Timed i time)
       -- Client A and Client B now have the same store
       cAstore2 `shouldBe` cBstore2
-  it "succesfully syncs a modification across to a second client" $
-    forAllValid $ \time1 ->
+  it "succesfully syncs a modification across to a second client"
+    $ forAllValid
+    $ \time1 ->
       forAllValid $ \i ->
         forAllValid $ \j -> do
           let cAstore1 = ClientItemSynced (Timed i time1)
@@ -228,8 +243,9 @@ syncingSpec mergeStrategy = do
           cAstore2 `shouldBe` ClientItemSynced (Timed j time2)
           -- Client A and Client B now have the same store
           cAstore2 `shouldBe` cBstore2
-  it "succesfully syncs a deletion across to a second client" $
-    forAllValid $ \time1 ->
+  it "succesfully syncs a deletion across to a second client"
+    $ forAllValid
+    $ \time1 ->
       forAllValid $ \i -> do
         let cAstore1 = ClientItemSynced (Timed i time1)
         -- Client B had synced that same item, but has since deleted it
@@ -256,8 +272,9 @@ syncingSpec mergeStrategy = do
         cAstore2 `shouldBe` ClientEmpty
         -- Client A and Client B now have the same store
         cAstore2 `shouldBe` cBstore2
-  it "does not run into a conflict if two clients both try to sync a deletion" $
-    forAllValid $ \time1 ->
+  it "does not run into a conflict if two clients both try to sync a deletion"
+    $ forAllValid
+    $ \time1 ->
       forAllValid $ \i -> do
         let cAstore1 = ClientDeleted time1
         -- Both client a and client b delete an item.
@@ -284,8 +301,9 @@ syncingSpec mergeStrategy = do
         cBstore2 `shouldBe` ClientEmpty
         -- Client A and Client B now have the same store
         cAstore2 `shouldBe` cBstore2
-  it "is idempotent with one client" $
-    forAllValid $ \cstore1 ->
+  it "is idempotent with one client"
+    $ forAllValid
+    $ \cstore1 ->
       forAllValid $ \sstore1 -> do
         let req1 = makeItemSyncRequest cstore1
             (resp1, sstore2) = processServerItemSync sstore1 req1
@@ -297,13 +315,15 @@ syncingSpec mergeStrategy = do
         sstore2 `shouldBe` sstore3
 
 emptyResponseSpec ::
-     forall a. (Show a, Eq a, GenValid a)
-  => (ClientItem a -> ItemMergeResult a -> ClientItem a)
-  -> Spec
+  forall a.
+  (Show a, Eq a, GenValid a) =>
+  (ClientItem a -> ItemMergeResult a -> ClientItem a) ->
+  Spec
 emptyResponseSpec mergeStrategy = do
   let mergeSyncResponse ci = mergeStrategy ci . mergeItemSyncResponseRaw ci
-  it "is returns an empty response on the second sync with no modifications" $
-    forAllValid $ \cstore1 ->
+  it "is returns an empty response on the second sync with no modifications"
+    $ forAllValid
+    $ \cstore1 ->
       forAllValid $ \sstore1 -> do
         let req1 = makeItemSyncRequest cstore1
             (resp1, sstore2) = processServerItemSync sstore1 req1

@@ -38,42 +38,48 @@
 -- This whole approach can break down if a server resets its server times
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful.Collection
-  ( initialClientStore
-  , clientStoreSize
-  , clientStoreClientIdSet
-  , clientStoreUndeletedSyncIdSet
-  , clientStoreSyncIdSet
-  , clientStoreItems
-  , addItemToClientStore
-  , findFreeSpot
-  , markItemDeletedInClientStore
-  , changeItemInClientStore
-  , deleteItemFromClientStore
-  , initialSyncRequest
-  , makeSyncRequest
-  , mergeSyncResponseIgnoreProblems
-  , mergeSyncResponseFromServer
+  ( initialClientStore,
+    clientStoreSize,
+    clientStoreClientIdSet,
+    clientStoreUndeletedSyncIdSet,
+    clientStoreSyncIdSet,
+    clientStoreItems,
+    addItemToClientStore,
+    findFreeSpot,
+    markItemDeletedInClientStore,
+    changeItemInClientStore,
+    deleteItemFromClientStore,
+    initialSyncRequest,
+    makeSyncRequest,
+    mergeSyncResponseIgnoreProblems,
+    mergeSyncResponseFromServer,
+
     -- * Custom merging
-  , ItemMergeStrategy(..)
-  , mergeSyncResponseUsingStrategy
+    ItemMergeStrategy (..),
+    mergeSyncResponseUsingStrategy,
+
     -- * Server side
-  , initialServerStore
-  , processServerSync
+    initialServerStore,
+    processServerSync,
+
     -- * Types, for reference
-  , ClientStore(..)
-  , SyncRequest(..)
-  , ClientAddition(..)
-  , SyncResponse(..)
-  , emptySyncResponse
-  , ServerStore(..)
-  , ClientId(..)
+    ClientStore (..),
+    SyncRequest (..),
+    ClientAddition (..),
+    SyncResponse (..),
+    emptySyncResponse,
+    ServerStore (..),
+    ClientId (..),
+
     -- * Utility functions for implementing client-side merging
-  , mergeAddedItems
-  , mergeSyncedButChangedItems
-  , mergeDeletedItems
+    mergeAddedItems,
+    mergeSyncedButChangedItems,
+    mergeDeletedItems,
+
     -- * Utility functions for implementing server-side responding
-  , addToSyncResponse
-  ) where
+    addToSyncResponse,
+  )
+where
 
 import Control.Applicative
 import Control.DeepSeq
@@ -96,64 +102,68 @@ import GHC.Generics (Generic)
 -- | A Client-side identifier for items.
 --
 -- These only need to be unique at the client.
-newtype ClientId =
-  ClientId
-    { unClientId :: Word64
-    }
+newtype ClientId
+  = ClientId
+      { unClientId :: Word64
+      }
   deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON, ToJSONKey, FromJSON, FromJSONKey)
 
 instance Validity ClientId
 
 instance NFData ClientId
 
-data ClientStore ci si a =
-  ClientStore
-        -- | These items are new locally but have not been synced to the server yet.
-    { clientStoreAddedItems :: Map ci a
+data ClientStore ci si a
+  = ClientStore
+      { -- | These items are new locally but have not been synced to the server yet.
+        clientStoreAddedItems :: Map ci a,
         -- | These items have been synced at their respective 'ServerTime's.
-    , clientStoreSyncedItems :: Map si (Timed a)
+        clientStoreSyncedItems :: Map si (Timed a),
         -- | These items have been synced at their respective 'ServerTime's
         -- but modified locally since then.
-    , clientStoreSyncedButChangedItems :: Map si (Timed a)
+        clientStoreSyncedButChangedItems :: Map si (Timed a),
         -- | These items have been deleted locally after they were synced
         -- but the server has not been notified of that yet.
-    , clientStoreDeletedItems :: Map si ServerTime
-    }
+        clientStoreDeletedItems :: Map si ServerTime
+      }
   deriving (Show, Eq, Generic)
 
-instance (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
-         Validity (ClientStore ci si a) where
+instance
+  (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
+  Validity (ClientStore ci si a)
+  where
   validate cs@ClientStore {..} =
     mconcat
-      [ genericValidate cs
-      , declare "There are no duplicate IDs" $
-        distinct $
-        concat
-          [ M.keys clientStoreSyncedItems
-          , M.keys clientStoreSyncedButChangedItems
-          , M.keys clientStoreDeletedItems
-          ]
+      [ genericValidate cs,
+        declare "There are no duplicate IDs"
+          $ distinct
+          $ concat
+            [ M.keys clientStoreSyncedItems,
+              M.keys clientStoreSyncedButChangedItems,
+              M.keys clientStoreDeletedItems
+            ]
       ]
 
 instance (NFData ci, NFData si, NFData a) => NFData (ClientStore ci si a)
 
-instance (Ord ci, Ord si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
-         FromJSON (ClientStore ci si a) where
+instance
+  (Ord ci, Ord si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
+  FromJSON (ClientStore ci si a)
+  where
   parseJSON =
     withObject "ClientStore" $ \o ->
-      ClientStore <$> o .:? "added" .!= M.empty <*> o .:? "synced" .!= M.empty <*>
-      o .:? "changed" .!= M.empty <*>
-      o .:? "deleted" .!= M.empty
+      ClientStore <$> o .:? "added" .!= M.empty <*> o .:? "synced" .!= M.empty
+        <*> o .:? "changed" .!= M.empty
+        <*> o .:? "deleted" .!= M.empty
 
 instance (ToJSONKey ci, ToJSONKey si, ToJSON a) => ToJSON (ClientStore ci si a) where
   toJSON ClientStore {..} =
     object $
-    catMaybes
-      [ jNull "added" clientStoreAddedItems
-      , jNull "synced" clientStoreSyncedItems
-      , jNull "changed" clientStoreSyncedButChangedItems
-      , jNull "deleted" clientStoreDeletedItems
-      ]
+      catMaybes
+        [ jNull "added" clientStoreAddedItems,
+          jNull "synced" clientStoreSyncedItems,
+          jNull "changed" clientStoreSyncedButChangedItems,
+          jNull "deleted" clientStoreDeletedItems
+        ]
 
 -- | A client store to start with.
 --
@@ -161,10 +171,10 @@ instance (ToJSONKey ci, ToJSONKey si, ToJSON a) => ToJSON (ClientStore ci si a) 
 initialClientStore :: ClientStore ci si a
 initialClientStore =
   ClientStore
-    { clientStoreAddedItems = M.empty
-    , clientStoreSyncedItems = M.empty
-    , clientStoreSyncedButChangedItems = M.empty
-    , clientStoreDeletedItems = M.empty
+    { clientStoreAddedItems = M.empty,
+      clientStoreSyncedItems = M.empty,
+      clientStoreSyncedButChangedItems = M.empty,
+      clientStoreDeletedItems = M.empty
     }
 
 -- | The number of items in a client store
@@ -173,11 +183,11 @@ initialClientStore =
 clientStoreSize :: ClientStore ci si a -> Word
 clientStoreSize ClientStore {..} =
   fromIntegral $
-  sum
-    [ M.size clientStoreAddedItems
-    , M.size clientStoreSyncedItems
-    , M.size clientStoreSyncedButChangedItems
-    ]
+    sum
+      [ M.size clientStoreAddedItems,
+        M.size clientStoreSyncedItems,
+        M.size clientStoreSyncedButChangedItems
+      ]
 
 -- | The set of client ids.
 --
@@ -198,9 +208,9 @@ clientStoreUndeletedSyncIdSet ClientStore {..} =
 clientStoreSyncIdSet :: (Ord ci, Ord si) => ClientStore ci si a -> Set si
 clientStoreSyncIdSet ClientStore {..} =
   S.unions
-    [ M.keysSet clientStoreSyncedItems
-    , M.keysSet clientStoreSyncedButChangedItems
-    , M.keysSet clientStoreDeletedItems
+    [ M.keysSet clientStoreSyncedItems,
+      M.keysSet clientStoreSyncedButChangedItems,
+      M.keysSet clientStoreDeletedItems
     ]
 
 -- | The set of items in the client store
@@ -209,16 +219,16 @@ clientStoreSyncIdSet ClientStore {..} =
 clientStoreItems :: (Ord ci, Ord si) => ClientStore ci si a -> Map (Either ci si) a
 clientStoreItems ClientStore {..} =
   M.unions
-    [ M.mapKeys Left clientStoreAddedItems
-    , M.mapKeys Right $ M.map timedValue clientStoreSyncedItems
-    , M.mapKeys Right $ M.map timedValue clientStoreSyncedButChangedItems
+    [ M.mapKeys Left clientStoreAddedItems,
+      M.mapKeys Right $ M.map timedValue clientStoreSyncedItems,
+      M.mapKeys Right $ M.map timedValue clientStoreSyncedButChangedItems
     ]
 
 -- | Add an item to a client store as an added item.
 --
 -- This will take care of the uniqueness constraint of the 'ci's in the map.
 addItemToClientStore ::
-     (Ord ci, Enum ci, Bounded ci) => a -> ClientStore ci si a -> ClientStore ci si a
+  (Ord ci, Enum ci, Bounded ci) => a -> ClientStore ci si a -> ClientStore ci si a
 addItemToClientStore a cs =
   let oldAddedItems = clientStoreAddedItems cs
       newAddedItems =
@@ -235,8 +245,9 @@ findFreeSpot :: (Ord ci, Enum ci, Bounded ci) => Map ci a -> ci
 findFreeSpot m =
   if M.null m
     then minBound
-    else let (i, _) = M.findMax m
-          in go (next i)
+    else
+      let (i, _) = M.findMax m
+       in go (next i)
   where
     go i =
       if M.member i m
@@ -262,9 +273,9 @@ markItemDeletedInClientStore u cs =
               newChangedItems = M.delete u oldChangedItems
               newDeletedItems = M.insert u (timedTime t) oldDeletedItems
            in cs
-                { clientStoreSyncedItems = newSyncedItems
-                , clientStoreSyncedButChangedItems = newChangedItems
-                , clientStoreDeletedItems = newDeletedItems
+                { clientStoreSyncedItems = newSyncedItems,
+                  clientStoreSyncedButChangedItems = newChangedItems,
+                  clientStoreDeletedItems = newDeletedItems
                 }
 
 -- | Replace the given item with a new value.
@@ -278,8 +289,8 @@ changeItemInClientStore i a cs =
   case M.lookup i (clientStoreSyncedItems cs) of
     Just t ->
       cs
-        { clientStoreSyncedItems = M.delete i (clientStoreSyncedItems cs)
-        , clientStoreSyncedButChangedItems =
+        { clientStoreSyncedItems = M.delete i (clientStoreSyncedItems cs),
+          clientStoreSyncedButChangedItems =
             M.insert i (t {timedValue = a}) (clientStoreSyncedButChangedItems cs)
         }
     Nothing ->
@@ -297,12 +308,12 @@ changeItemInClientStore i a cs =
 deleteItemFromClientStore :: Ord ci => ci -> ClientStore ci si a -> ClientStore ci si a
 deleteItemFromClientStore i cs = cs {clientStoreAddedItems = M.delete i (clientStoreAddedItems cs)}
 
-newtype ServerStore si a =
-  ServerStore
-        -- | A map of items, named using an 'i', together with the 'ServerTime' at which
+newtype ServerStore si a
+  = ServerStore
+      { -- | A map of items, named using an 'i', together with the 'ServerTime' at which
         -- they were last synced.
-    { serverStoreItems :: Map si (Timed a)
-    }
+        serverStoreItems :: Map si (Timed a)
+      }
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 instance (Validity si, Show si, Ord si, Validity a) => Validity (ServerStore si a)
@@ -315,54 +326,58 @@ instance (NFData si, NFData a) => NFData (ServerStore si a)
 initialServerStore :: ServerStore si a
 initialServerStore = ServerStore {serverStoreItems = M.empty}
 
-data SyncRequest ci si a =
-  SyncRequest
-        -- | These items are new locally but have not been synced to the server yet.
-    { syncRequestNewItems :: Map ci a
+data SyncRequest ci si a
+  = SyncRequest
+      { -- | These items are new locally but have not been synced to the server yet.
+        syncRequestNewItems :: Map ci a,
         -- | These items have been synced at their respective 'ServerTime's.
-    , syncRequestKnownItems :: Map si ServerTime
+        syncRequestKnownItems :: Map si ServerTime,
         -- | These items have been synced at their respective 'ServerTime's
         -- but modified locally since then.
-    , syncRequestKnownButChangedItems :: Map si (Timed a)
+        syncRequestKnownButChangedItems :: Map si (Timed a),
         -- | These items have been deleted locally after they were synced
         -- but the server has not been notified of that yet.
-    , syncRequestDeletedItems :: Map si ServerTime
-    }
+        syncRequestDeletedItems :: Map si ServerTime
+      }
   deriving (Show, Eq, Generic)
 
-instance (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
-         Validity (SyncRequest ci si a) where
+instance
+  (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
+  Validity (SyncRequest ci si a)
+  where
   validate sr@SyncRequest {..} =
     mconcat
-      [ genericValidate sr
-      , declare "There are no duplicate IDs" $
-        distinct $
-        concat
-          [ M.keys syncRequestKnownItems
-          , M.keys syncRequestKnownButChangedItems
-          , M.keys syncRequestDeletedItems
-          ]
+      [ genericValidate sr,
+        declare "There are no duplicate IDs"
+          $ distinct
+          $ concat
+            [ M.keys syncRequestKnownItems,
+              M.keys syncRequestKnownButChangedItems,
+              M.keys syncRequestDeletedItems
+            ]
       ]
 
 instance (NFData ci, NFData si, NFData a) => NFData (SyncRequest ci si a)
 
-instance (Ord ci, Ord si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
-         FromJSON (SyncRequest ci si a) where
+instance
+  (Ord ci, Ord si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
+  FromJSON (SyncRequest ci si a)
+  where
   parseJSON =
     withObject "SyncRequest" $ \o ->
-      SyncRequest <$> o .:? "new" .!= M.empty <*> o .:? "synced" .!= M.empty <*>
-      o .:? "changed" .!= M.empty <*>
-      o .:? "deleted" .!= M.empty
+      SyncRequest <$> o .:? "new" .!= M.empty <*> o .:? "synced" .!= M.empty
+        <*> o .:? "changed" .!= M.empty
+        <*> o .:? "deleted" .!= M.empty
 
 instance (ToJSONKey ci, ToJSONKey si, ToJSON a) => ToJSON (SyncRequest ci si a) where
   toJSON SyncRequest {..} =
     object $
-    catMaybes
-      [ jNull "new" syncRequestNewItems
-      , jNull "synced" syncRequestKnownItems
-      , jNull "changed" syncRequestKnownButChangedItems
-      , jNull "deleted" syncRequestDeletedItems
-      ]
+      catMaybes
+        [ jNull "new" syncRequestNewItems,
+          jNull "synced" syncRequestKnownItems,
+          jNull "changed" syncRequestKnownButChangedItems,
+          jNull "deleted" syncRequestDeletedItems
+        ]
 
 -- | An intial 'SyncRequest' to start with.
 --
@@ -370,17 +385,17 @@ instance (ToJSONKey ci, ToJSONKey si, ToJSON a) => ToJSON (SyncRequest ci si a) 
 initialSyncRequest :: SyncRequest ci si a
 initialSyncRequest =
   SyncRequest
-    { syncRequestNewItems = M.empty
-    , syncRequestKnownItems = M.empty
-    , syncRequestKnownButChangedItems = M.empty
-    , syncRequestDeletedItems = M.empty
+    { syncRequestNewItems = M.empty,
+      syncRequestKnownItems = M.empty,
+      syncRequestKnownButChangedItems = M.empty,
+      syncRequestDeletedItems = M.empty
     }
 
-data ClientAddition i =
-  ClientAddition
-    { clientAdditionId :: i
-    , clientAdditionServerTime :: ServerTime
-    }
+data ClientAddition i
+  = ClientAddition
+      { clientAdditionId :: i,
+        clientAdditionServerTime :: ServerTime
+      }
   deriving (Show, Eq, Generic)
 
 instance Validity i => Validity (ClientAddition i)
@@ -393,113 +408,119 @@ instance FromJSON i => FromJSON (ClientAddition i) where
 instance ToJSON i => ToJSON (ClientAddition i) where
   toJSON ClientAddition {..} = object ["id" .= clientAdditionId, "time" .= clientAdditionServerTime]
 
-data SyncResponse ci si a =
-  SyncResponse
-        -- | The client added these items and server has succesfully been made aware of that.
+data SyncResponse ci si a
+  = SyncResponse
+      { -- | The client added these items and server has succesfully been made aware of that.
         --
         -- The client needs to update their server times
-    { syncResponseClientAdded :: Map ci (ClientAddition si)
+        syncResponseClientAdded :: Map ci (ClientAddition si),
         -- | The client changed these items and server has succesfully been made aware of that.
         --
         -- The client needs to update their server times
-    , syncResponseClientChanged :: Map si ServerTime
+        syncResponseClientChanged :: Map si ServerTime,
         -- | The client deleted these items and server has succesfully been made aware of that.
         --
         -- The client can delete them from its deleted items
-    , syncResponseClientDeleted :: Set si
+        syncResponseClientDeleted :: Set si,
         -- | These items have been added on the server side
         --
         -- The client should add them too.
-    , syncResponseServerAdded :: Map si (Timed a)
+        syncResponseServerAdded :: Map si (Timed a),
         -- | These items have been modified on the server side.
         --
         -- The client should modify them too.
-    , syncResponseServerChanged :: Map si (Timed a)
+        syncResponseServerChanged :: Map si (Timed a),
         -- | These items were deleted on the server side
         --
         -- The client should delete them too
-    , syncResponseServerDeleted :: Set si
+        syncResponseServerDeleted :: Set si,
         -- | These are conflicts where the server and the client both have an item, but it is different.
         --
         -- The server kept its part of each, the client can either take whatever the server gave them
         -- or deal with the conflicts somehow, and then try to re-sync.
-    , syncResponseConflicts :: Map si (Timed a)
+        syncResponseConflicts :: Map si (Timed a),
         -- | These are conflicts where the server has an item but the client does not.
         --
         -- The server kept its item, the client can either take whatever the server gave them
         -- or deal with the conflicts somehow, and then try to re-sync.
-    , syncResponseConflictsClientDeleted :: Map si (Timed a)
+        syncResponseConflictsClientDeleted :: Map si (Timed a),
         -- | These are conflicts where the server has no item but the client has a modified item.
         --
         -- The server left its item deleted, the client can either delete its items too
         -- or deal with the conflicts somehow, and then try to re-sync.
-    , syncResponseConflictsServerDeleted :: Set si
-    }
+        syncResponseConflictsServerDeleted :: Set si
+      }
   deriving (Show, Eq, Generic)
 
-instance (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
-         Validity (SyncResponse ci si a) where
+instance
+  (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
+  Validity (SyncResponse ci si a)
+  where
   validate sr@SyncResponse {..} =
     mconcat
-      [ genericValidate sr
-      , declare "There are no duplicate IDs" $
-        distinct $
-        concat
-          [ map (\(_, ClientAddition {..}) -> clientAdditionId) $ M.toList syncResponseClientAdded
-          , M.keys syncResponseClientChanged
-          , S.toList syncResponseClientDeleted
-          , M.keys syncResponseServerAdded
-          , M.keys syncResponseServerChanged
-          , S.toList syncResponseServerDeleted
-          , M.keys syncResponseConflicts
-          , M.keys syncResponseConflictsClientDeleted
-          , S.toList syncResponseConflictsServerDeleted
-          ]
+      [ genericValidate sr,
+        declare "There are no duplicate IDs"
+          $ distinct
+          $ concat
+            [ map (\(_, ClientAddition {..}) -> clientAdditionId) $ M.toList syncResponseClientAdded,
+              M.keys syncResponseClientChanged,
+              S.toList syncResponseClientDeleted,
+              M.keys syncResponseServerAdded,
+              M.keys syncResponseServerChanged,
+              S.toList syncResponseServerDeleted,
+              M.keys syncResponseConflicts,
+              M.keys syncResponseConflictsClientDeleted,
+              S.toList syncResponseConflictsServerDeleted
+            ]
       ]
 
 instance (NFData ci, NFData si, NFData a) => NFData (SyncResponse ci si a)
 
-instance (Ord ci, Ord si, FromJSON ci, FromJSON si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
-         FromJSON (SyncResponse ci si a) where
+instance
+  (Ord ci, Ord si, FromJSON ci, FromJSON si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
+  FromJSON (SyncResponse ci si a)
+  where
   parseJSON =
     withObject "SyncResponse" $ \o ->
-      SyncResponse <$> o .:? "client-added" .!= M.empty <*> o .:? "client-changed" .!= M.empty <*>
-      o .:? "client-deleted" .!= S.empty <*>
-      o .:? "server-added" .!= M.empty <*>
-      o .:? "server-changed" .!= M.empty <*>
-      o .:? "server-deleted" .!= S.empty <*>
-      o .:? "conflict" .!= M.empty <*>
-      o .:? "conflict-client-deleted" .!= M.empty <*>
-      o .:? "conflict-server-deleted" .!= S.empty
+      SyncResponse <$> o .:? "client-added" .!= M.empty <*> o .:? "client-changed" .!= M.empty
+        <*> o .:? "client-deleted" .!= S.empty
+        <*> o .:? "server-added" .!= M.empty
+        <*> o .:? "server-changed" .!= M.empty
+        <*> o .:? "server-deleted" .!= S.empty
+        <*> o .:? "conflict" .!= M.empty
+        <*> o .:? "conflict-client-deleted" .!= M.empty
+        <*> o .:? "conflict-server-deleted" .!= S.empty
 
-instance (ToJSON ci, ToJSON si, ToJSONKey ci, ToJSONKey si, ToJSON a) =>
-         ToJSON (SyncResponse ci si a) where
+instance
+  (ToJSON ci, ToJSON si, ToJSONKey ci, ToJSONKey si, ToJSON a) =>
+  ToJSON (SyncResponse ci si a)
+  where
   toJSON SyncResponse {..} =
     object $
-    catMaybes
-      [ jNull "client-added" syncResponseClientAdded
-      , jNull "client-changed" syncResponseClientChanged
-      , jNull "client-deleted" syncResponseClientDeleted
-      , jNull "server-added" syncResponseServerAdded
-      , jNull "server-changed" syncResponseServerChanged
-      , jNull "server-deleted" syncResponseServerDeleted
-      , jNull "conflict" syncResponseConflicts
-      , jNull "conflict-client-deleted" syncResponseConflictsClientDeleted
-      , jNull "conflict-server-deleted" syncResponseConflictsServerDeleted
-      ]
+      catMaybes
+        [ jNull "client-added" syncResponseClientAdded,
+          jNull "client-changed" syncResponseClientChanged,
+          jNull "client-deleted" syncResponseClientDeleted,
+          jNull "server-added" syncResponseServerAdded,
+          jNull "server-changed" syncResponseServerChanged,
+          jNull "server-deleted" syncResponseServerDeleted,
+          jNull "conflict" syncResponseConflicts,
+          jNull "conflict-client-deleted" syncResponseConflictsClientDeleted,
+          jNull "conflict-server-deleted" syncResponseConflictsServerDeleted
+        ]
 
 emptySyncResponse :: SyncResponse ci si a
 emptySyncResponse =
   SyncResponse
-    { syncResponseClientAdded = M.empty
-    , syncResponseClientChanged = M.empty
-    , syncResponseClientDeleted = S.empty
-    , syncResponseServerAdded = M.empty
-    , syncResponseServerChanged = M.empty
-    , syncResponseServerDeleted = S.empty
-    , syncResponseConflicts = M.empty
-    , syncResponseConflictsClientDeleted = M.empty
-    , syncResponseConflictsServerDeleted = S.empty
+    { syncResponseClientAdded = M.empty,
+      syncResponseClientChanged = M.empty,
+      syncResponseClientDeleted = S.empty,
+      syncResponseServerAdded = M.empty,
+      syncResponseServerChanged = M.empty,
+      syncResponseServerDeleted = S.empty,
+      syncResponseConflicts = M.empty,
+      syncResponseConflictsClientDeleted = M.empty,
+      syncResponseConflictsServerDeleted = S.empty
     }
 
 jNull :: (Foldable f, ToJSON (f b)) => Text -> f b -> Maybe (Text, Value)
@@ -514,10 +535,10 @@ jNull n s =
 makeSyncRequest :: ClientStore ci si a -> SyncRequest ci si a
 makeSyncRequest ClientStore {..} =
   SyncRequest
-    { syncRequestNewItems = clientStoreAddedItems
-    , syncRequestKnownItems = M.map timedTime clientStoreSyncedItems
-    , syncRequestKnownButChangedItems = clientStoreSyncedButChangedItems
-    , syncRequestDeletedItems = clientStoreDeletedItems
+    { syncRequestNewItems = clientStoreAddedItems,
+      syncRequestKnownItems = M.map timedTime clientStoreSyncedItems,
+      syncRequestKnownButChangedItems = clientStoreSyncedButChangedItems,
+      syncRequestDeletedItems = clientStoreDeletedItems
     }
 
 -- | Merge an 'SyncResponse' into the current 'ClientStore'.
@@ -530,7 +551,7 @@ makeSyncRequest ClientStore {..} =
 --
 -- __Con: Clients will diverge when conflicts occur.__
 mergeSyncResponseIgnoreProblems ::
-     (Ord ci, Ord si) => ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a
+  (Ord ci, Ord si) => ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a
 mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
         mergeAddedItems (clientStoreAddedItems cs) syncResponseClientAdded
@@ -540,17 +561,17 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
         mergeDeletedItems (clientStoreDeletedItems cs) syncResponseClientDeleted
       synced =
         M.unions
-          [ newSyncedItems
-          , syncResponseServerAdded
-          , syncResponseServerChanged
-          , newModifiedItems
-          , clientStoreSyncedItems cs
+          [ newSyncedItems,
+            syncResponseServerAdded,
+            syncResponseServerChanged,
+            newModifiedItems,
+            clientStoreSyncedItems cs
           ]
    in ClientStore
-        { clientStoreAddedItems = addedItemsLeftovers
-        , clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced
-        , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
-        , clientStoreSyncedItems =
+        { clientStoreAddedItems = addedItemsLeftovers,
+          clientStoreSyncedButChangedItems = syncedButNotChangedLeftovers `M.difference` synced,
+          clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced,
+          clientStoreSyncedItems =
             synced `M.difference` M.fromSet (const ()) syncResponseServerDeleted
         }
 
@@ -564,11 +585,11 @@ mergeSyncResponseIgnoreProblems cs SyncResponse {..} =
 --
 -- This function ignores mismatches.
 mergeSyncResponseUsingStrategy ::
-     (Ord ci, Ord si)
-  => ItemMergeStrategy a
-  -> ClientStore ci si a
-  -> SyncResponse ci si a
-  -> ClientStore ci si a
+  (Ord ci, Ord si) =>
+  ItemMergeStrategy a ->
+  ClientStore ci si a ->
+  SyncResponse ci si a ->
+  ClientStore ci si a
 mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
   let (addedItemsLeftovers, newSyncedItems) =
         mergeAddedItems (clientStoreAddedItems cs) syncResponseClientAdded
@@ -578,34 +599,35 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
         mergeDeletedItems (clientStoreDeletedItems cs) syncResponseClientDeleted
       synced =
         M.unions
-          [ newSyncedItems
-          , syncResponseServerAdded
-          , syncResponseServerChanged
+          [ newSyncedItems,
+            syncResponseServerAdded,
+            syncResponseServerChanged,
             -- Merge the synced but changed (the only ones that could have caused a conflict)
             -- with the ones that the response indicated were a conflict.
-          , M.intersectionWith
+            M.intersectionWith
               (\ci (Timed si st) -> Timed (itemMergeStrategyMergeChangeConflict ci si) st)
               (M.map timedValue $ clientStoreSyncedButChangedItems cs)
-              syncResponseConflicts
+              syncResponseConflicts,
             -- Of the items that the server changed but the client deleted,
             -- keep the ones that the strategy wants to keep.
-          , M.mapMaybe id $
-            M.intersectionWith
-              (\_ (Timed si st) ->
-                 Timed <$> itemMergeStrategyMergeClientDeletedConflict si <*> pure st)
-              (clientStoreDeletedItems cs)
-              syncResponseConflictsClientDeleted
-          , newModifiedItems
-          , clientStoreSyncedItems cs
+            M.mapMaybe id $
+              M.intersectionWith
+                ( \_ (Timed si st) ->
+                    Timed <$> itemMergeStrategyMergeClientDeletedConflict si <*> pure st
+                )
+                (clientStoreDeletedItems cs)
+                syncResponseConflictsClientDeleted,
+            newModifiedItems,
+            clientStoreSyncedItems cs
           ]
       newSyncedButChangedItems =
-        syncedButNotChangedLeftovers `M.difference`
-        M.fromSet (const ()) syncResponseConflictsServerDeleted
+        syncedButNotChangedLeftovers
+          `M.difference` M.fromSet (const ()) syncResponseConflictsServerDeleted
    in ClientStore
-        { clientStoreAddedItems = addedItemsLeftovers
-        , clientStoreSyncedButChangedItems = newSyncedButChangedItems `M.difference` synced
-        , clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced
-        , clientStoreSyncedItems =
+        { clientStoreAddedItems = addedItemsLeftovers,
+          clientStoreSyncedButChangedItems = newSyncedButChangedItems `M.difference` synced,
+          clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced,
+          clientStoreSyncedItems =
             synced `M.difference` M.fromSet (const ()) syncResponseServerDeleted
         }
 
@@ -615,21 +637,22 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
 --
 -- __Con: Conflicting updates will be lost.__
 mergeSyncResponseFromServer ::
-     (Ord ci, Ord si) => ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a
+  (Ord ci, Ord si) => ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a
 mergeSyncResponseFromServer =
   mergeSyncResponseUsingStrategy
     ItemMergeStrategy
-      { itemMergeStrategyMergeChangeConflict = \_ serverItem -> serverItem
-      , itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem
-      , itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
+      { itemMergeStrategyMergeChangeConflict = \_ serverItem -> serverItem,
+        itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem,
+        itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
       }
 
 -- | Merge the local added items with the ones that the server has acknowledged as added.
 mergeAddedItems ::
-     forall ci si a. (Ord ci, Ord si)
-  => Map ci a
-  -> Map ci (ClientAddition si)
-  -> (Map ci a, Map si (Timed a))
+  forall ci si a.
+  (Ord ci, Ord si) =>
+  Map ci a ->
+  Map ci (ClientAddition si) ->
+  (Map ci a, Map si (Timed a))
 mergeAddedItems local added = M.foldlWithKey go (M.empty, M.empty) local
   where
     go :: (Map ci a, Map si (Timed a)) -> ci -> a -> (Map ci a, Map si (Timed a))
@@ -637,18 +660,20 @@ mergeAddedItems local added = M.foldlWithKey go (M.empty, M.empty) local
       case M.lookup ci added of
         Nothing -> (M.insert ci a as, m)
         Just ClientAddition {..} ->
-          ( as
-          , M.insert
+          ( as,
+            M.insert
               clientAdditionId
               (Timed {timedValue = a, timedTime = clientAdditionServerTime})
-              m)
+              m
+          )
 
 -- | Merge the local synced but changed items with the ones that the server has acknowledged as changed.
 mergeSyncedButChangedItems ::
-     forall i a. Ord i
-  => Map i (Timed a)
-  -> Map i ServerTime
-  -> (Map i (Timed a), Map i (Timed a))
+  forall i a.
+  Ord i =>
+  Map i (Timed a) ->
+  Map i ServerTime ->
+  (Map i (Timed a), Map i (Timed a))
 mergeSyncedButChangedItems local changed = M.foldlWithKey go (M.empty, M.empty) local
   where
     go :: (Map i (Timed a), Map i (Timed a)) -> i -> Timed a -> (Map i (Timed a), Map i (Timed a))
@@ -672,74 +697,75 @@ instance (NFData ci, NFData si) => NFData (Identifier ci si)
 
 -- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
 processServerSync ::
-     forall ci si a m.
-     ( Ord ci
-     , Ord si
-     , Monad m
+  forall ci si a m.
+  ( Ord ci,
+    Ord si,
+    Monad m
+  ) =>
   -- | The action that is guaranteed to generate unique identifiers
-     )
-  => m si
-  -> ServerStore si a
-  -> SyncRequest ci si a
-  -> m (SyncResponse ci si a, ServerStore si a)
-processServerSync genId ServerStore {..} sr@SyncRequest {..}
+  m si ->
+  ServerStore si a ->
+  SyncRequest ci si a ->
+  m (SyncResponse ci si a, ServerStore si a)
+processServerSync genId ServerStore {..} sr@SyncRequest {..} =
   -- Make tuples of requests for all of the items that only had a client identifier.
- = do
-  let unidentifedPairs :: Map ci (ServerItem a, ItemSyncRequest a)
-      unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
+  do
+    let unidentifedPairs :: Map ci (ServerItem a, ItemSyncRequest a)
+        unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
         -- Make tuples of results for each of the unidentifier tuples.
-      unidentifedResults :: Map ci (ItemSyncResponse a, ServerItem a)
-      unidentifedResults = M.map (uncurry processServerItemSync) unidentifedPairs
-  generatedResults <- generateIdentifiersFor genId unidentifedResults
+        unidentifedResults :: Map ci (ItemSyncResponse a, ServerItem a)
+        unidentifedResults = M.map (uncurry processServerItemSync) unidentifedPairs
+    generatedResults <- generateIdentifiersFor genId unidentifedResults
     -- Gather the items that had a server identifier already.
-  let clientIdentifiedSyncRequests :: Map si (ItemSyncRequest a)
-      clientIdentifiedSyncRequests = identifiedItemSyncRequests sr
+    let clientIdentifiedSyncRequests :: Map si (ItemSyncRequest a)
+        clientIdentifiedSyncRequests = identifiedItemSyncRequests sr
         -- Make 'ServerItem's for each of the items on the server side
-      serverIdentifiedItems :: Map si (ServerItem a)
-      serverIdentifiedItems = M.map ServerFull serverStoreItems
+        serverIdentifiedItems :: Map si (ServerItem a)
+        serverIdentifiedItems = M.map ServerFull serverStoreItems
         -- Match up client items with server items by their id.
-      thesePairs :: Map si (These (ServerItem a) (ItemSyncRequest a))
-      thesePairs = unionTheseMaps serverIdentifiedItems clientIdentifiedSyncRequests
+        thesePairs :: Map si (These (ServerItem a) (ItemSyncRequest a))
+        thesePairs = unionTheseMaps serverIdentifiedItems clientIdentifiedSyncRequests
         -- Make tuples of server 'ServerItem's and 'ItemSyncRequest's for each of the items with an id
-      requestPairs :: Map si (ServerItem a, ItemSyncRequest a)
-      requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
+        requestPairs :: Map si (ServerItem a, ItemSyncRequest a)
+        requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
         -- Make tuples of results for each of the tuplus that had a server identifier.
-      identifiedResults :: Map si (ItemSyncResponse a, ServerItem a)
-      identifiedResults = M.map (uncurry processServerItemSync) requestPairs
+        identifiedResults :: Map si (ItemSyncResponse a, ServerItem a)
+        identifiedResults = M.map (uncurry processServerItemSync) requestPairs
     -- Put together the results together
-  let allResults :: Map (Identifier ci si) (ItemSyncResponse a, ServerItem a)
-      allResults =
-        M.union
-          (M.mapKeys OnlyServer identifiedResults)
-          (M.mapKeys (uncurry BothServerAndClient) generatedResults)
-  pure $ produceSyncResults allResults
+    let allResults :: Map (Identifier ci si) (ItemSyncResponse a, ServerItem a)
+        allResults =
+          M.union
+            (M.mapKeys OnlyServer identifiedResults)
+            (M.mapKeys (uncurry BothServerAndClient) generatedResults)
+    pure $ produceSyncResults allResults
 
 identifiedItemSyncRequests :: (Ord ci, Ord si) => SyncRequest ci si a -> Map si (ItemSyncRequest a)
 identifiedItemSyncRequests SyncRequest {..} =
   M.unions
-    [ M.map ItemSyncRequestKnown syncRequestKnownItems
-    , M.map ItemSyncRequestKnownButChanged syncRequestKnownButChangedItems
-    , M.map ItemSyncRequestDeletedLocally syncRequestDeletedItems
+    [ M.map ItemSyncRequestKnown syncRequestKnownItems,
+      M.map ItemSyncRequestKnownButChanged syncRequestKnownButChangedItems,
+      M.map ItemSyncRequestDeletedLocally syncRequestDeletedItems
     ]
 
 generateIdentifiersFor ::
-     (Ord ci, Ord si, Monad m)
-  => m si
-  -> Map ci (ItemSyncResponse a, ServerItem a)
-  -> m (Map (si, ci) (ItemSyncResponse a, ServerItem a))
+  (Ord ci, Ord si, Monad m) =>
+  m si ->
+  Map ci (ItemSyncResponse a, ServerItem a) ->
+  m (Map (si, ci) (ItemSyncResponse a, ServerItem a))
 generateIdentifiersFor genId unidentifedResults =
-  fmap M.fromList $
-  forM (M.toList unidentifedResults) $ \(int, r) -> do
-    uuid <- genId
-    pure ((uuid, int), r)
+  fmap M.fromList
+    $ forM (M.toList unidentifedResults)
+    $ \(int, r) -> do
+      uuid <- genId
+      pure ((uuid, int), r)
 
 produceSyncResults ::
-     forall ci si a. (Ord ci, Ord si)
-  => Map (Identifier ci si) (ItemSyncResponse a, ServerItem a)
-  -> (SyncResponse ci si a, ServerStore si a)
-produceSyncResults allResults
+  forall ci si a.
+  (Ord ci, Ord si) =>
+  Map (Identifier ci si) (ItemSyncResponse a, ServerItem a) ->
+  (SyncResponse ci si a, ServerStore si a)
+produceSyncResults allResults =
   -- Produce a sync response
- =
   let resp :: SyncResponse ci si a
       resp =
         M.foldlWithKey
@@ -750,26 +776,28 @@ produceSyncResults allResults
       newStore :: Map si (Timed a)
       newStore =
         M.mapMaybe
-          (\case
-             ServerEmpty -> Nothing
-             ServerFull t -> Just t) $
-        M.map snd $
-        M.mapKeys
-          (\case
-             OnlyServer i -> i
-             BothServerAndClient i _ -> i)
-          allResults
-      -- return them both.
-   in (resp, ServerStore newStore)
+          ( \case
+              ServerEmpty -> Nothing
+              ServerFull t -> Just t
+          )
+          $ M.map snd
+          $ M.mapKeys
+            ( \case
+                OnlyServer i -> i
+                BothServerAndClient i _ -> i
+            )
+            allResults
+   in -- return them both.
+      (resp, ServerStore newStore)
 
 -- | Given an incomplete 'SyncResponse', an id, possibly a client ID too, and
 -- an 'ItemSyncResponse', produce a less incomplete 'SyncResponse'.
 addToSyncResponse ::
-     (Ord ci, Ord si)
-  => SyncResponse ci si a
-  -> Identifier ci si
-  -> ItemSyncResponse a
-  -> SyncResponse ci si a
+  (Ord ci, Ord si) =>
+  SyncResponse ci si a ->
+  Identifier ci si ->
+  ItemSyncResponse a ->
+  SyncResponse ci si a
 addToSyncResponse sr cid isr =
   case cid of
     BothServerAndClient i int ->

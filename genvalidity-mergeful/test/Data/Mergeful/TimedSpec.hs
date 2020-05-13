@@ -1,16 +1,15 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Data.Mergeful.TimedSpec
-  ( spec
-  ) where
+  ( spec,
+  )
+where
 
+import Data.GenValidity.Mergeful.Item ()
+import Data.Mergeful.Timed
 import Test.Hspec
 import Test.Validity
 import Test.Validity.Aeson
-
-import Data.Mergeful.Timed
-
-import Data.GenValidity.Mergeful.Item ()
 
 spec :: Spec
 spec = do

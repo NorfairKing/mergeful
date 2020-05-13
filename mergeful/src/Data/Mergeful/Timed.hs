@@ -1,25 +1,24 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 -- | Dealing with server times.
 --
 -- __If you are importing this module, you are probably doing something wrong.__
 module Data.Mergeful.Timed
-  ( ServerTime(..)
-  , initialServerTime
-  , incrementServerTime
-  , Timed(..)
-  ) where
+  ( ServerTime (..),
+    initialServerTime,
+    incrementServerTime,
+    Timed (..),
+  )
+where
 
-import GHC.Generics (Generic)
-
+import Control.DeepSeq
 import Data.Aeson as JSON
 import Data.Validity
 import Data.Word
-
-import Control.DeepSeq
+import GHC.Generics (Generic)
 
 -- | A "time", as "measured" by the server.
 --
@@ -33,10 +32,10 @@ import Control.DeepSeq
 -- will not happen in practice, we will not worry about it.
 -- You would have to sync millions of modifications every second
 -- until long after the sun consumes the earth for this to be a problem.
-newtype ServerTime =
-  ServerTime
-    { unServerTime :: Word64
-    }
+newtype ServerTime
+  = ServerTime
+      { unServerTime :: Word64
+      }
   deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 instance Validity ServerTime
@@ -52,11 +51,11 @@ incrementServerTime :: ServerTime -> ServerTime
 incrementServerTime (ServerTime w) = ServerTime (succ w)
 
 -- | A value along with a server time.
-data Timed a =
-  Timed
-    { timedValue :: !a
-    , timedTime :: !ServerTime
-    }
+data Timed a
+  = Timed
+      { timedValue :: !a,
+        timedTime :: !ServerTime
+      }
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (Timed a)

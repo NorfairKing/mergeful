@@ -1,18 +1,17 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Data.Mergeful.ValueSpec
-  ( spec
-  ) where
+  ( spec,
+  )
+where
 
+import Data.GenValidity.Mergeful.Value ()
+import Data.Mergeful.Timed
+import Data.Mergeful.Value
 import Test.Hspec
 import Test.QuickCheck
 import Test.Validity
 import Test.Validity.Aeson
-
-import Data.Mergeful.Timed
-import Data.Mergeful.Value
-
-import Data.GenValidity.Mergeful.Value ()
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
@@ -31,26 +30,30 @@ spec = do
   jsonSpecOnValid @(ValueSyncRequest Int)
   genValidSpec @(ValueSyncResponse Int)
   jsonSpecOnValid @(ValueSyncResponse Int)
-  describe "makeValueSyncRequest" $
-    it "produces valid requests" $ producesValidsOnValids (makeValueSyncRequest @Int)
-  describe "mergeValueSyncResponseRaw" $
-    it "produces valid client stores" $ producesValidsOnValids2 (mergeValueSyncResponseRaw @Int)
-  describe "mergeValueSyncResponseIgnoreProblems" $
-    it "produces valid client stores" $
-    producesValidsOnValids2 (mergeValueSyncResponseIgnoreProblems @Int)
+  describe "makeValueSyncRequest"
+    $ it "produces valid requests"
+    $ producesValidsOnValids (makeValueSyncRequest @Int)
+  describe "mergeValueSyncResponseRaw"
+    $ it "produces valid client stores"
+    $ producesValidsOnValids2 (mergeValueSyncResponseRaw @Int)
+  describe "mergeValueSyncResponseIgnoreProblems"
+    $ it "produces valid client stores"
+    $ producesValidsOnValids2 (mergeValueSyncResponseIgnoreProblems @Int)
   describe "processServerValueSync" $ do
     it "produces valid responses and stores" $ producesValidsOnValids2 (processServerValueSync @Int)
-    it "makes no changes if the sync request reflects the state of the server" $
-      forAllValid $ \i ->
+    it "makes no changes if the sync request reflects the state of the server"
+      $ forAllValid
+      $ \i ->
         forAllValid $ \st -> do
           let store1 = ServerValue $ Timed i st
               req = ValueSyncRequestKnown st
           let (resp, store2) = processServerValueSync @Int store1 req
           store2 `shouldBe` store1
           resp `shouldBe` ValueSyncResponseInSync
-    describe "Client changes" $
-      it "changes the item that the client tells the server to change" $
-      forAllValid $ \i ->
+    describe "Client changes"
+      $ it "changes the item that the client tells the server to change"
+      $ forAllValid
+      $ \i ->
         forAllValid $ \j ->
           forAllValid $ \st -> do
             let store1 = ServerValue (Timed i st)
@@ -59,18 +62,20 @@ spec = do
             let time = incrementServerTime st
             store2 `shouldBe` ServerValue (Timed j time)
             resp `shouldBe` ValueSyncResponseClientChanged time
-    describe "Server changes" $
-      it "tells the client that there is a modified item at the server side" $
-      forAllValid $ \i ->
+    describe "Server changes"
+      $ it "tells the client that there is a modified item at the server side"
+      $ forAllValid
+      $ \i ->
         forAllSubsequent $ \(st, st') -> do
           let store1 = ServerValue (Timed i st')
               req = ValueSyncRequestKnown st
           let (resp, store2) = processServerValueSync @Int store1 req
           store2 `shouldBe` store1
           resp `shouldBe` ValueSyncResponseServerChanged (Timed i st')
-    describe "Conflicts" $
-      it "notices a conflict if the client and server are trying to sync different items" $
-      forAllValid $ \i ->
+    describe "Conflicts"
+      $ it "notices a conflict if the client and server are trying to sync different items"
+      $ forAllValid
+      $ \i ->
         forAllValid $ \j ->
           forAllSubsequent $ \(st, st') -> do
             let store1 = ServerValue (Timed i st')
@@ -79,8 +84,9 @@ spec = do
             store2 `shouldBe` store1
             resp `shouldBe` ValueSyncResponseConflict (Timed i st')
   describe "syncing" $ do
-    it "succesfully syncs a modification across to a second client" $
-      forAllValid $ \time1 ->
+    it "succesfully syncs a modification across to a second client"
+      $ forAllValid
+      $ \time1 ->
         forAllValid $ \i ->
           forAllValid $ \j -> do
             let cAstore1 = ClientValue (Timed i time1) NotChanged
@@ -109,8 +115,9 @@ spec = do
             cAstore2 `shouldBe` ClientValue (Timed j time2) NotChanged
             -- Client A and Client B now have the same store
             cAstore2 `shouldBe` cBstore2
-    it "is idempotent with one client" $
-      forAllValid $ \cstore1 ->
+    it "is idempotent with one client"
+      $ forAllValid
+      $ \cstore1 ->
         forAllValid $ \sstore1 -> do
           let req1 = makeValueSyncRequest (cstore1 :: ClientValue Int)
               (resp1, sstore2) = processServerValueSync sstore1 req1

@@ -6,8 +6,9 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Data.Mergeful.CollectionSpec
-  ( spec
-  ) where
+  ( spec,
+  )
+where
 
 import Control.Monad.State
 import Data.Functor.Identity
@@ -44,17 +45,21 @@ spec = do
   jsonSpecOnValid @(ClientAddition Int)
   genValidSpec @(SyncResponse ClientId Int Int)
   jsonSpecOnValid @(SyncResponse ClientId Int Int)
-  describe "initialClientStore" $
-    it "is valid" $ shouldBeValid $ initialClientStore @ClientId @Int @Int
+  describe "initialClientStore"
+    $ it "is valid"
+    $ shouldBeValid
+    $ initialClientStore @ClientId @Int @Int
   describe "addItemToClientStore" $ do
     it "produces valid stores" $ producesValidsOnValids2 (addItemToClientStore @ClientId @Int @Int)
-    it "makes the client store one bigger" $
-      forAllValid $ \cs ->
+    it "makes the client store one bigger"
+      $ forAllValid
+      $ \cs ->
         forAllValid $ \a ->
-          clientStoreSize @ClientId @Int @Int (addItemToClientStore a cs) `shouldBe`
-          (clientStoreSize cs + 1)
-    it "ensures that the added item is in fact in the result" $
-      forAllValid $ \cs ->
+          clientStoreSize @ClientId @Int @Int (addItemToClientStore a cs)
+            `shouldBe` (clientStoreSize cs + 1)
+    it "ensures that the added item is in fact in the result"
+      $ forAllValid
+      $ \cs ->
         forAllValid $ \a ->
           let cs' = addItemToClientStore @ClientId @Int @Int a cs
            in a `elem` clientStoreAddedItems cs'
@@ -65,8 +70,8 @@ spec = do
       let p cs = S.size (clientStoreUndeletedSyncIdSet cs) > 0
        in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
             forAll (elements $ S.toList $ clientStoreUndeletedSyncIdSet cs) $ \i ->
-              (clientStoreSize @ClientId @Int @Int (markItemDeletedInClientStore i cs) + 1) `shouldBe`
-              clientStoreSize cs
+              (clientStoreSize @ClientId @Int @Int (markItemDeletedInClientStore i cs) + 1)
+                `shouldBe` clientStoreSize cs
     it "ensures that the added item is in fact not in the result" $
       let p cs = S.size (clientStoreUndeletedSyncIdSet cs) > 0
        in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
@@ -81,8 +86,8 @@ spec = do
        in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
             forAll (elements $ S.toList $ clientStoreUndeletedSyncIdSet cs) $ \i ->
               forAllValid $ \a ->
-                clientStoreSize @ClientId @Int @Int (changeItemInClientStore i a cs) `shouldBe`
-                clientStoreSize cs
+                clientStoreSize @ClientId @Int @Int (changeItemInClientStore i a cs)
+                  `shouldBe` clientStoreSize cs
     it "ensures that the changed item is in fact in the result" $
       let p cs = S.size (clientStoreUndeletedSyncIdSet cs) > 0
        in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
@@ -97,49 +102,61 @@ spec = do
       let p cs = S.size (clientStoreClientIdSet cs) > 0
        in forAllShrink (genValid `suchThat` p) (filter p . shrinkValid) $ \cs ->
             forAll (elements $ S.toList $ clientStoreClientIdSet cs) $ \cid ->
-              (clientStoreSize @ClientId @Int @Int (deleteItemFromClientStore cid cs) + 1) `shouldBe`
-              clientStoreSize cs
+              (clientStoreSize @ClientId @Int @Int (deleteItemFromClientStore cid cs) + 1)
+                `shouldBe` clientStoreSize cs
   describe "initialServerStore" $ it "is valid" $ shouldBeValid $ initialServerStore @Int @Int
-  describe "initialSyncRequest" $
-    it "is valid" $ shouldBeValid $ initialSyncRequest @ClientId @Int @Int
-  describe "emptySyncResponse" $
-    it "is valid" $ shouldBeValid $ emptySyncResponse @ClientId @Int @Int
-  describe "makeSyncRequest" $
-    it "produces valid requests" $ producesValidsOnValids (makeSyncRequest @ClientId @Int @Int)
-  describe "mergeAddedItems" $
-    it "produces valid results" $ producesValidsOnValids2 (mergeAddedItems @ClientId @Int @Int)
-  describe "mergeSyncedButChangedItems" $
-    it "produces valid results" $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
-  describe "mergeAddedItems" $
-    it "produces valid results" $ producesValidsOnValids2 (mergeAddedItems @ClientId @Int @Int)
-  describe "mergeSyncedButChangedItems" $
-    it "produces valid results" $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
-  describe "mergeDeletedItems" $
-    it "produces valid results" $ producesValidsOnValids2 (mergeDeletedItems @Int @Int)
-  describe "mergeSyncResponseIgnoreProblems" $
-    it "produces valid requests" $
-    forAllValid $ \store ->
+  describe "initialSyncRequest"
+    $ it "is valid"
+    $ shouldBeValid
+    $ initialSyncRequest @ClientId @Int @Int
+  describe "emptySyncResponse"
+    $ it "is valid"
+    $ shouldBeValid
+    $ emptySyncResponse @ClientId @Int @Int
+  describe "makeSyncRequest"
+    $ it "produces valid requests"
+    $ producesValidsOnValids (makeSyncRequest @ClientId @Int @Int)
+  describe "mergeAddedItems"
+    $ it "produces valid results"
+    $ producesValidsOnValids2 (mergeAddedItems @ClientId @Int @Int)
+  describe "mergeSyncedButChangedItems"
+    $ it "produces valid results"
+    $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
+  describe "mergeAddedItems"
+    $ it "produces valid results"
+    $ producesValidsOnValids2 (mergeAddedItems @ClientId @Int @Int)
+  describe "mergeSyncedButChangedItems"
+    $ it "produces valid results"
+    $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
+  describe "mergeDeletedItems"
+    $ it "produces valid results"
+    $ producesValidsOnValids2 (mergeDeletedItems @Int @Int)
+  describe "mergeSyncResponseIgnoreProblems"
+    $ it "produces valid requests"
+    $ forAllValid
+    $ \store ->
       forAllValid $ \response ->
         let res = mergeSyncResponseIgnoreProblems @ClientId @Int @Int store response
          in case prettyValidate res of
               Right _ -> pure ()
               Left err ->
                 expectationFailure $
-                unlines
-                  [ "Store:"
-                  , ppShow store
-                  , "Response:"
-                  , ppShow response
-                  , "Invalid result:"
-                  , ppShow res
-                  , "error:"
-                  , err
-                  ]
-  describe "processServerSync" $
-    it "produces valid tuples of a response and a store" $
-    producesValidsOnValids2
-      (\store request ->
-         evalD $ processServerSync @ClientId @UUID genD (store :: ServerStore UUID Int) request)
+                  unlines
+                    [ "Store:",
+                      ppShow store,
+                      "Response:",
+                      ppShow response,
+                      "Invalid result:",
+                      ppShow res,
+                      "error:",
+                      err
+                    ]
+  describe "processServerSync"
+    $ it "produces valid tuples of a response and a store"
+    $ producesValidsOnValids2
+      ( \store request ->
+          evalD $ processServerSync @ClientId @UUID genD (store :: ServerStore UUID Int) request
+      )
   describe "Syncing with mergeSyncResponseIgnoreProblems" $ do
     mergeFunctionSpec @Int mergeSyncResponseIgnoreProblems
     noDataLossSpec @Int mergeSyncResponseIgnoreProblems
@@ -156,16 +173,15 @@ spec = do
     let strat :: ItemMergeStrategy Int
         strat =
           ItemMergeStrategy
-            { itemMergeStrategyMergeChangeConflict =
-                \clientItem serverItem -> max clientItem serverItem
-            , itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem
-            , itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
+            { itemMergeStrategyMergeChangeConflict = \clientItem serverItem -> max clientItem serverItem,
+              itemMergeStrategyMergeClientDeletedConflict = \serverItem -> Just serverItem,
+              itemMergeStrategyMergeServerDeletedConflict = \_ -> Nothing
             }
         mergeFunc ::
-             (Ord ci, Ord si)
-          => ClientStore ci si Int
-          -> SyncResponse ci si Int
-          -> ClientStore ci si Int
+          (Ord ci, Ord si) =>
+          ClientStore ci si Int ->
+          SyncResponse ci si Int ->
+          ClientStore ci si Int
         mergeFunc = mergeSyncResponseUsingStrategy strat
     mergeFunctionSpec @Int mergeFunc
     noDataLossSpec @Int mergeFunc
@@ -175,15 +191,22 @@ spec = do
     noDifferentExceptForConflicts @Int mergeFunc mergeSyncResponseFromServer
 
 mergeFunctionSpec ::
-     forall a. (Show a, Ord a, GenValid a)
-  => (forall ci si. (Ord ci, Ord si) =>
-                      ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a)
-  -> Spec
+  forall a.
+  (Show a, Ord a, GenValid a) =>
+  ( forall ci si.
+    (Ord ci, Ord si) =>
+    ClientStore ci si a ->
+    SyncResponse ci si a ->
+    ClientStore ci si a
+  ) ->
+  Spec
 mergeFunctionSpec mergeFunc = do
-  describe "Single client" $
-    describe "Multi-item" $ do
-      it "succesfully downloads everything from the server for an empty client" $
-        forAllValid $ \sstore1 ->
+  describe "Single client"
+    $ describe "Multi-item"
+    $ do
+      it "succesfully downloads everything from the server for an empty client"
+        $ forAllValid
+        $ \sstore1 ->
           evalDM $ do
             let cstore1 = initialClientStore
             let req = makeSyncRequest cstore1
@@ -192,8 +215,9 @@ mergeFunctionSpec mergeFunc = do
             lift $ do
               sstore2 `shouldBe` sstore1
               clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
-      it "succesfully uploads everything to the server for an empty server" $
-        forAllValid $ \items ->
+      it "succesfully uploads everything to the server for an empty server"
+        $ forAllValid
+        $ \items ->
           evalDM $ do
             let cstore1 = initialClientStore {clientStoreAddedItems = items}
             let sstore1 = initialServerStore
@@ -201,11 +225,12 @@ mergeFunctionSpec mergeFunc = do
             (resp, sstore2) <- processServerSync genD sstore1 req
             let cstore2 = mergeFunc @ClientId @UUID cstore1 resp
             lift $ do
-              sort (M.elems (M.map timedValue (clientStoreSyncedItems cstore2))) `shouldBe`
-                sort (M.elems items)
+              sort (M.elems (M.map timedValue (clientStoreSyncedItems cstore2)))
+                `shouldBe` sort (M.elems items)
               clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
-      it "is idempotent with one client" $
-        forAllValid $ \cstore1 ->
+      it "is idempotent with one client"
+        $ forAllValid
+        $ \cstore1 ->
           forAllValid $ \sstore1 ->
             evalDM $ do
               let req1 = makeSyncRequest cstore1
@@ -219,8 +244,9 @@ mergeFunctionSpec mergeFunc = do
                 sstore2 `shouldBe` sstore3
   describe "Multiple clients" $ do
     describe "Single-item" $ do
-      it "successfully syncs an addition accross to a second client" $
-        forAllValid $ \i ->
+      it "successfully syncs an addition accross to a second client"
+        $ forAllValid
+        $ \i ->
           evalDM $ do
             let cAstore1 = initialClientStore {clientStoreAddedItems = M.singleton (ClientId 0) i}
             -- Client B is empty
@@ -254,19 +280,22 @@ mergeFunctionSpec mergeFunc = do
                 -- Client A and Client B now have the same store
                 lift $ cAstore2 `shouldBe` cBstore2
               _ -> lift $ expectationFailure "Should have found exactly one added item."
-      it "successfully syncs a modification accross to a second client" $
-        forAllValid $ \uuid ->
+      it "successfully syncs a modification accross to a second client"
+        $ forAllValid
+        $ \uuid ->
           forAllValid $ \i ->
             forAllValid $ \j ->
               forAllValid $ \time1 ->
                 evalDM $ do
                   let cAstore1 =
                         initialClientStore
-                          {clientStoreSyncedItems = M.singleton uuid (Timed i time1)}
+                          { clientStoreSyncedItems = M.singleton uuid (Timed i time1)
+                          }
                   -- Client B had synced that same item, but has since modified it
                   let cBstore1 =
                         initialClientStore
-                          {clientStoreSyncedButChangedItems = M.singleton uuid (Timed j time1)}
+                          { clientStoreSyncedButChangedItems = M.singleton uuid (Timed j time1)
+                          }
                   -- The server is has the item that both clients had before
                   let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i time1)}
                   -- Client B makes sync request 1
@@ -275,33 +304,35 @@ mergeFunctionSpec mergeFunc = do
                   (resp1, sstore2) <- processServerSync genD sstore1 req1
                   let time2 = incrementServerTime time1
                   lift $ do
-                    resp1 `shouldBe`
-                      emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2}
-                    sstore2 `shouldBe`
-                      ServerStore {serverStoreItems = M.singleton uuid (Timed j time2)}
+                    resp1
+                      `shouldBe` emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2}
+                    sstore2
+                      `shouldBe` ServerStore {serverStoreItems = M.singleton uuid (Timed j time2)}
                   -- Client B merges the response
                   let cBstore2 = mergeFunc cBstore1 resp1
                   lift $
-                    cBstore2 `shouldBe`
-                    initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
+                    cBstore2
+                      `shouldBe` initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
                   -- Client A makes sync request 2
                   let req2 = makeSyncRequest cAstore1
                   -- The server processes sync request 2
                   (resp2, sstore3) <- processServerSync genD sstore2 req2
                   lift $ do
-                    resp2 `shouldBe`
-                      emptySyncResponse
-                        {syncResponseServerChanged = M.singleton uuid (Timed j time2)}
+                    resp2
+                      `shouldBe` emptySyncResponse
+                        { syncResponseServerChanged = M.singleton uuid (Timed j time2)
+                        }
                     sstore3 `shouldBe` sstore2
                   -- Client A merges the response
                   let cAstore2 = mergeFunc @ClientId @UUID cAstore1 resp2
                   lift $
-                    cAstore2 `shouldBe`
-                    initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
+                    cAstore2
+                      `shouldBe` initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
                   -- Client A and Client B now have the same store
                   lift $ cAstore2 `shouldBe` cBstore2
-      it "succesfully syncs a deletion across to a second client" $
-        forAllValid $ \uuid ->
+      it "succesfully syncs a deletion across to a second client"
+        $ forAllValid
+        $ \uuid ->
           forAllValid $ \time1 ->
             forAllValid $ \i ->
               evalDM $ do
@@ -334,8 +365,9 @@ mergeFunctionSpec mergeFunc = do
                 lift $ cAstore2 `shouldBe` initialClientStore
                 -- Client A and Client B now have the same store
                 lift $ cAstore2 `shouldBe` cBstore2
-      it "does not run into a conflict if two clients both try to sync a deletion" $
-        forAllValid $ \uuid ->
+      it "does not run into a conflict if two clients both try to sync a deletion"
+        $ forAllValid
+        $ \uuid ->
           forAllValid $ \time1 ->
             forAllValid $ \i ->
               evalDM $ do
@@ -349,8 +381,8 @@ mergeFunctionSpec mergeFunc = do
                 -- The server processes sync request 1
                 (resp1, sstore2) <- processServerSync genD sstore1 req1
                 lift $ do
-                  resp1 `shouldBe`
-                    (emptySyncResponse {syncResponseClientDeleted = S.singleton uuid})
+                  resp1
+                    `shouldBe` (emptySyncResponse {syncResponseClientDeleted = S.singleton uuid})
                   sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty})
                 -- Client A merges the response
                 let cAstore2 = mergeFunc cAstore1 resp1
@@ -360,8 +392,8 @@ mergeFunctionSpec mergeFunc = do
                 -- The server processes sync request 2
                 (resp2, sstore3) <- processServerSync genD sstore2 req2
                 lift $ do
-                  resp2 `shouldBe`
-                    (emptySyncResponse {syncResponseClientDeleted = S.singleton uuid})
+                  resp2
+                    `shouldBe` (emptySyncResponse {syncResponseClientDeleted = S.singleton uuid})
                   sstore3 `shouldBe` sstore2
                 -- Client B merges the response
                 let cBstore2 = mergeFunc @ClientId @UUID cBstore1 resp2
@@ -370,8 +402,9 @@ mergeFunctionSpec mergeFunc = do
                   -- Client A and Client B now have the same store
                   cAstore2 `shouldBe` cBstore2
     describe "Multiple items" $ do
-      it "successfully syncs additions accross to a second client" $
-        forAllValid $ \is ->
+      it "successfully syncs additions accross to a second client"
+        $ forAllValid
+        $ \is ->
           evalDM $ do
             let cAstore1 = initialClientStore {clientStoreAddedItems = is}
             -- Client B is empty
@@ -401,8 +434,9 @@ mergeFunctionSpec mergeFunc = do
             lift $ cBstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
             -- Client A and Client B now have the same store
             lift $ cAstore2 `shouldBe` cBstore2
-      it "succesfully syncs deletions across to a second client" $
-        forAllValid $ \items ->
+      it "succesfully syncs deletions across to a second client"
+        $ forAllValid
+        $ \items ->
           forAllValid $ \time1 ->
             evalDM $ do
               let syncedItems = M.map (\i -> Timed i time1) items
@@ -436,8 +470,9 @@ mergeFunctionSpec mergeFunc = do
               lift $ cAstore2 `shouldBe` initialClientStore
               -- Client A and Client B now have the same store
               lift $ cAstore2 `shouldBe` cBstore2
-      it "does not run into a conflict if two clients both try to sync a deletion" $
-        forAllValid $ \items ->
+      it "does not run into a conflict if two clients both try to sync a deletion"
+        $ forAllValid
+        $ \items ->
           forAllValid $ \time1 ->
             evalDM $ do
               let cAstore1 =
@@ -472,177 +507,213 @@ mergeFunctionSpec mergeFunc = do
                 cAstore2 `shouldBe` cBstore2
 
 noDataLossSpec ::
-     forall a. (Show a, Ord a, GenValid a)
-  => (forall ci si. (Ord ci, Ord si) =>
-                      ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a)
-  -> Spec
+  forall a.
+  (Show a, Ord a, GenValid a) =>
+  ( forall ci si.
+    (Ord ci, Ord si) =>
+    ClientStore ci si a ->
+    SyncResponse ci si a ->
+    ClientStore ci si a
+  ) ->
+  Spec
 noDataLossSpec mergeFunc =
-  it "does not lose data after a conflict occurs" $
-  forAllValid $ \uuid ->
-    forAllValid $ \time1 ->
-      forAllValid $ \i1 ->
-        forAllValid $ \i2 ->
-          forAllValid $ \i3 ->
-            evalDM $ do
-              let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i1 time1)}
+  it "does not lose data after a conflict occurs"
+    $ forAllValid
+    $ \uuid ->
+      forAllValid $ \time1 ->
+        forAllValid $ \i1 ->
+          forAllValid $ \i2 ->
+            forAllValid $ \i3 ->
+              evalDM $ do
+                let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i1 time1)}
                 -- The server has an item
                 -- The first client has synced it, and modified it.
-              let cAstore1 =
-                    initialClientStore
-                      {clientStoreSyncedButChangedItems = M.singleton uuid (Timed i2 time1)}
+                let cAstore1 =
+                      initialClientStore
+                        { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i2 time1)
+                        }
                 -- The second client has synced it too, and modified it too.
-              let cBstore1 =
-                    initialClientStore
-                      {clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)}
+                let cBstore1 =
+                      initialClientStore
+                        { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)
+                        }
                 -- Client A makes sync request 1
-              let req1 = makeSyncRequest @ClientId @UUID cAstore1
+                let req1 = makeSyncRequest @ClientId @UUID cAstore1
                 -- The server processes sync request 1
-              (resp1, sstore2) <- processServerSync genD sstore1 req1
-              let time2 = incrementServerTime time1
+                (resp1, sstore2) <- processServerSync genD sstore1 req1
+                let time2 = incrementServerTime time1
                 -- The server updates the item accordingly
-              lift $ do
-                resp1 `shouldBe`
-                  (emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2})
-                sstore2 `shouldBe`
-                  (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
+                lift $ do
+                  resp1
+                    `shouldBe` (emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2})
+                  sstore2
+                    `shouldBe` (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
                 -- Client A merges the response
-              let cAstore2 = mergeFunc @ClientId @UUID cAstore1 resp1
-              lift $
-                cAstore2 `shouldBe`
-                (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
+                let cAstore2 = mergeFunc @ClientId @UUID cAstore1 resp1
+                lift $
+                  cAstore2
+                    `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
                 -- Client B makes sync request 2
-              let req2 = makeSyncRequest cBstore1
+                let req2 = makeSyncRequest cBstore1
                 -- The server processes sync request 2
-              (resp2, sstore3) <- processServerSync genD sstore2 req2
+                (resp2, sstore3) <- processServerSync genD sstore2 req2
                 -- The server reports a conflict and does not change its store
-              lift $ do
-                resp2 `shouldBe`
-                  (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed i2 time2)})
-                sstore3 `shouldBe` sstore2
+                lift $ do
+                  resp2
+                    `shouldBe` (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed i2 time2)})
+                  sstore3 `shouldBe` sstore2
                 -- Client B merges the response
-              let cBstore2 = mergeSyncResponseIgnoreProblems @ClientId @UUID cBstore1 resp2
+                let cBstore2 = mergeSyncResponseIgnoreProblems @ClientId @UUID cBstore1 resp2
                 -- Client does not update, but keeps its conflict
-              lift $
-                cBstore2 `shouldBe`
-                (initialClientStore
-                   {clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)})
+                lift $
+                  cBstore2
+                    `shouldBe` ( initialClientStore
+                                   { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)
+                                   }
+                               )
 
 -- Client A and Client B now *do not* have the same store
 noDivergenceSpec ::
-     forall a. (Show a, Ord a, GenValid a)
-  => (forall ci si. (Ord ci, Ord si) =>
-                      ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a)
-  -> Spec
+  forall a.
+  (Show a, Ord a, GenValid a) =>
+  ( forall ci si.
+    (Ord ci, Ord si) =>
+    ClientStore ci si a ->
+    SyncResponse ci si a ->
+    ClientStore ci si a
+  ) ->
+  Spec
 noDivergenceSpec mergeFunc =
-  it "does not diverge after a conflict occurs" $
-  forAllValid $ \uuid ->
-    forAllValid $ \time1 ->
-      forAllValid $ \i1 ->
-        forAllValid $ \i2 ->
-          forAllValid $ \i3 ->
-            evalDM $ do
-              let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i1 time1)}
+  it "does not diverge after a conflict occurs"
+    $ forAllValid
+    $ \uuid ->
+      forAllValid $ \time1 ->
+        forAllValid $ \i1 ->
+          forAllValid $ \i2 ->
+            forAllValid $ \i3 ->
+              evalDM $ do
+                let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i1 time1)}
                 -- The server has an item
                 -- The first client has synced it, and modified it.
-              let cAstore1 =
-                    initialClientStore
-                      {clientStoreSyncedButChangedItems = M.singleton uuid (Timed i2 time1)}
+                let cAstore1 =
+                      initialClientStore
+                        { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i2 time1)
+                        }
                 -- The second client has synced it too, and modified it too.
-              let cBstore1 =
-                    initialClientStore
-                      {clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)}
+                let cBstore1 =
+                      initialClientStore
+                        { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)
+                        }
                 -- Client A makes sync request 1
-              let req1 = makeSyncRequest @ClientId @UUID cAstore1
+                let req1 = makeSyncRequest @ClientId @UUID cAstore1
                 -- The server processes sync request 1
-              (resp1, sstore2) <- processServerSync genD sstore1 req1
-              let time2 = incrementServerTime time1
+                (resp1, sstore2) <- processServerSync genD sstore1 req1
+                let time2 = incrementServerTime time1
                 -- The server updates the item accordingly
-              lift $ do
-                resp1 `shouldBe`
-                  (emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2})
-                sstore2 `shouldBe`
-                  (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
+                lift $ do
+                  resp1
+                    `shouldBe` (emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2})
+                  sstore2
+                    `shouldBe` (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
                 -- Client A merges the response
-              let cAstore2 = mergeFunc cAstore1 resp1
-              lift $
-                cAstore2 `shouldBe`
-                (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
+                let cAstore2 = mergeFunc cAstore1 resp1
+                lift $
+                  cAstore2
+                    `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
                 -- Client B makes sync request 2
-              let req2 = makeSyncRequest cBstore1
+                let req2 = makeSyncRequest cBstore1
                 -- The server processes sync request 2
-              (resp2, sstore3) <- processServerSync genD sstore2 req2
+                (resp2, sstore3) <- processServerSync genD sstore2 req2
                 -- The server reports a conflict and does not change its store
-              lift $ do
-                resp2 `shouldBe`
-                  (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed i2 time2)})
-                sstore3 `shouldBe` sstore2
+                lift $ do
+                  resp2
+                    `shouldBe` (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed i2 time2)})
+                  sstore3 `shouldBe` sstore2
                 -- Client B merges the response
-              let cBstore2 = mergeSyncResponseFromServer cBstore1 resp2
+                let cBstore2 = mergeSyncResponseFromServer cBstore1 resp2
                 -- Client does not update, but keeps its conflict
-              lift $ do
-                cBstore2 `shouldBe`
-                  (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
+                lift $ do
+                  cBstore2
+                    `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
                   -- Client A and Client B now have the same store
-                cBstore2 `shouldBe` cAstore2
+                  cBstore2 `shouldBe` cAstore2
 
 emptyResponseSpec ::
-     forall a. (Show a, Eq a, Ord a, GenValid a)
-  => (forall ci si. (Ord ci, Ord si) =>
-                      ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a)
-  -> Spec
+  forall a.
+  (Show a, Eq a, Ord a, GenValid a) =>
+  ( forall ci si.
+    (Ord ci, Ord si) =>
+    ClientStore ci si a ->
+    SyncResponse ci si a ->
+    ClientStore ci si a
+  ) ->
+  Spec
 emptyResponseSpec mergeFunc =
-  it "is returns an empty response on the second sync with no modifications" $
-  forAllValid $ \cstore1 ->
-    forAllValid $ \sstore1 ->
-      evalDM $ do
-        let req1 = makeSyncRequest @ClientId @UUID cstore1
-        (resp1, sstore2) <- processServerSync genD sstore1 req1
-        let cstore2 = mergeFunc cstore1 resp1
-            req2 = makeSyncRequest cstore2
-        (resp2, _) <- processServerSync genD sstore2 req2
-        lift $ resp2 `shouldBe` emptySyncResponse
+  it "is returns an empty response on the second sync with no modifications"
+    $ forAllValid
+    $ \cstore1 ->
+      forAllValid $ \sstore1 ->
+        evalDM $ do
+          let req1 = makeSyncRequest @ClientId @UUID cstore1
+          (resp1, sstore2) <- processServerSync genD sstore1 req1
+          let cstore2 = mergeFunc cstore1 resp1
+              req2 = makeSyncRequest cstore2
+          (resp2, _) <- processServerSync genD sstore2 req2
+          lift $ resp2 `shouldBe` emptySyncResponse
 
 noDifferentExceptForConflicts ::
-     forall a. (Show a, Eq a, Ord a, GenValid a)
-  => (forall ci si. (Ord ci, Ord si) =>
-                      ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a)
-  -> (forall ci si. (Ord ci, Ord si) =>
-                      ClientStore ci si a -> SyncResponse ci si a -> ClientStore ci si a)
-  -> Spec
+  forall a.
+  (Show a, Eq a, Ord a, GenValid a) =>
+  ( forall ci si.
+    (Ord ci, Ord si) =>
+    ClientStore ci si a ->
+    SyncResponse ci si a ->
+    ClientStore ci si a
+  ) ->
+  ( forall ci si.
+    (Ord ci, Ord si) =>
+    ClientStore ci si a ->
+    SyncResponse ci si a ->
+    ClientStore ci si a
+  ) ->
+  Spec
 noDifferentExceptForConflicts mergeFunc1 mergeFunc2 =
-  describe "mergeSyncResponseFromServer" $
-  it "only differs from mergeSyncResponseIgnoreProblems on conflicts" $
-  forAllValid $ \cstore ->
-    forAllValid $ \sresp@SyncResponse {..} -> do
-      let cstoreA = mergeFunc1 (cstore :: ClientStore ClientId UUID a) sresp
-          cstoreB = mergeFunc2 cstore sresp
-      if cstoreA == cstoreB
-        then pure ()
-        else unless
-               (or
-                  [ not (M.null syncResponseConflicts)
-                  , not (M.null syncResponseConflictsClientDeleted)
-                  , not (S.null syncResponseConflictsServerDeleted)
-                  ]) $
-             expectationFailure $
-             unlines
-               [ "There was a difference between mergeFunc1 and mergeFunc2 that was somehow unrelated to the conflicts:"
-               , "syncResponseConflicts:"
-               , ppShow syncResponseConflicts
-               , "syncResponseConflictsClientDeleted:"
-               , ppShow syncResponseConflictsClientDeleted
-               , "syncResponseConflictsServerDeleted:"
-               , ppShow syncResponseConflictsServerDeleted
-               , "client store after mergeFunc1:"
-               , ppShow cstoreA
-               , "client store after mergeFunc2:"
-               , ppShow cstoreB
-               ]
+  describe "mergeSyncResponseFromServer"
+    $ it "only differs from mergeSyncResponseIgnoreProblems on conflicts"
+    $ forAllValid
+    $ \cstore ->
+      forAllValid $ \sresp@SyncResponse {..} -> do
+        let cstoreA = mergeFunc1 (cstore :: ClientStore ClientId UUID a) sresp
+            cstoreB = mergeFunc2 cstore sresp
+        if cstoreA == cstoreB
+          then pure ()
+          else
+            unless
+              ( or
+                  [ not (M.null syncResponseConflicts),
+                    not (M.null syncResponseConflictsClientDeleted),
+                    not (S.null syncResponseConflictsServerDeleted)
+                  ]
+              )
+              $ expectationFailure
+              $ unlines
+                [ "There was a difference between mergeFunc1 and mergeFunc2 that was somehow unrelated to the conflicts:",
+                  "syncResponseConflicts:",
+                  ppShow syncResponseConflicts,
+                  "syncResponseConflictsClientDeleted:",
+                  ppShow syncResponseConflictsClientDeleted,
+                  "syncResponseConflictsServerDeleted:",
+                  ppShow syncResponseConflictsServerDeleted,
+                  "client store after mergeFunc1:",
+                  ppShow cstoreA,
+                  "client store after mergeFunc2:",
+                  ppShow cstoreB
+                ]
 
-newtype D m a =
-  D
-    { unD :: StateT StdGen m a
-    }
+newtype D m a
+  = D
+      { unD :: StateT StdGen m a
+      }
   deriving (Generic, Functor, Applicative, Monad, MonadState StdGen, MonadTrans, MonadIO)
 
 evalD :: D Identity a -> a

@@ -38,33 +38,33 @@
 -- This whole approach can break down if a server resets its server times
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful.Value
-  ( initialClientValue
-  , makeValueSyncRequest
-  , mergeValueSyncResponseRaw
-  , ValueMergeResult(..)
-  , mergeValueSyncResponseIgnoreProblems
-  , mergeIgnoringProblems
-  , mergeFromServer
-  , mergeUsingFunction
+  ( initialClientValue,
+    makeValueSyncRequest,
+    mergeValueSyncResponseRaw,
+    ValueMergeResult (..),
+    mergeValueSyncResponseIgnoreProblems,
+    mergeIgnoringProblems,
+    mergeFromServer,
+    mergeUsingFunction,
+
     -- * Server side
-  , initialServerValue
-  , processServerValueSync
+    initialServerValue,
+    processServerValueSync,
+
     -- * Types, for reference
-  , ChangedFlag(..)
-  , ClientValue(..)
-  , ValueSyncRequest(..)
-  , ValueSyncResponse(..)
-  , ServerValue(..)
-  ) where
-
-import GHC.Generics (Generic)
-
-import Data.Aeson as JSON
-import Data.Validity
+    ChangedFlag (..),
+    ClientValue (..),
+    ValueSyncRequest (..),
+    ValueSyncResponse (..),
+    ServerValue (..),
+  )
+where
 
 import Control.DeepSeq
-
+import Data.Aeson as JSON
 import Data.Mergeful.Timed
+import Data.Validity
+import GHC.Generics (Generic)
 
 data ChangedFlag
   = Changed
@@ -82,8 +82,8 @@ instance NFData ChangedFlag
 -- the server, and whether the item has been modified at the client
 --
 -- There cannot be an unsynced 'ClientValue'.
-data ClientValue a =
-  ClientValue !(Timed a) !ChangedFlag
+data ClientValue a
+  = ClientValue !(Timed a) !ChangedFlag
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ClientValue a)
@@ -93,22 +93,25 @@ instance NFData a => NFData (ClientValue a)
 instance FromJSON a => FromJSON (ClientValue a) where
   parseJSON =
     withObject "ClientValue" $ \o ->
-      ClientValue <$> (Timed <$> o .: "value" <*> o .: "time") <*>
-      ((\b ->
-          if b
-            then Changed
-            else NotChanged) <$>
-       o .: "changed")
+      ClientValue <$> (Timed <$> o .: "value" <*> o .: "time")
+        <*> ( ( \b ->
+                  if b
+                    then Changed
+                    else NotChanged
+              )
+                <$> o .: "changed"
+            )
 
 instance ToJSON a => ToJSON (ClientValue a) where
   toJSON (ClientValue Timed {..} cf) =
     object
-      [ "value" .= timedValue
-      , "time" .= timedTime
-      , "changed" .=
-        (case cf of
-           Changed -> True
-           NotChanged -> False)
+      [ "value" .= timedValue,
+        "time" .= timedTime,
+        "changed"
+          .= ( case cf of
+                 Changed -> True
+                 NotChanged -> False
+             )
       ]
 
 -- | Produce a client value based on an initial synchronisation request
@@ -119,8 +122,8 @@ initialClientValue t = ClientValue t NotChanged
 --
 -- The only difference between 'a' and 'ServerValue a' is that 'ServerValue a' also
 -- remembers the last time this value was changed during synchronisation.
-newtype ServerValue a =
-  ServerValue (Timed a)
+newtype ServerValue a
+  = ServerValue (Timed a)
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ServerValue a)
@@ -141,11 +144,11 @@ initialServerValue :: a -> ServerValue a
 initialServerValue a = ServerValue $ Timed {timedValue = a, timedTime = initialServerTime}
 
 data ValueSyncRequest a
-  -- | There is an item locally that was synced at the given 'ServerTime'
-  = ValueSyncRequestKnown !ServerTime
-  -- | There is an item locally that was synced at the given 'ServerTime'
-  -- but it has been changed since then.
-  | ValueSyncRequestKnownButChanged !(Timed a)
+  = -- | There is an item locally that was synced at the given 'ServerTime'
+    ValueSyncRequestKnown !ServerTime
+  | -- | There is an item locally that was synced at the given 'ServerTime'
+    -- but it has been changed since then.
+    ValueSyncRequestKnownButChanged !(Timed a)
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ValueSyncRequest a)
@@ -164,31 +167,27 @@ instance FromJSON a => FromJSON (ValueSyncRequest a) where
 instance ToJSON a => ToJSON (ValueSyncRequest a) where
   toJSON ci =
     object $
-    let o n rest = ("type" .= (n :: String)) : rest
-     in case ci of
-          ValueSyncRequestKnown t -> o "synced" ["time" .= t]
-          ValueSyncRequestKnownButChanged Timed {..} ->
-            o "changed" ["value" .= timedValue, "time" .= timedTime]
+      let o n rest = ("type" .= (n :: String)) : rest
+       in case ci of
+            ValueSyncRequestKnown t -> o "synced" ["time" .= t]
+            ValueSyncRequestKnownButChanged Timed {..} ->
+              o "changed" ["value" .= timedValue, "time" .= timedTime]
 
 data ValueSyncResponse a
-  -- | The client and server are fully in sync.
-  --
-  -- Nothing needs to be done at the client side.
-  = ValueSyncResponseInSync
-  -- | The client changed the value and server has succesfully been made aware of that.
-  --
-  -- The client needs to update its server time
-  | ValueSyncResponseClientChanged !ServerTime
-  -- | This value has been changed on the server side.
-  --
-  -- The client should change it too.
-  | ValueSyncResponseServerChanged !(Timed a)
-  -- | A conflict occurred.
-  --
-  -- The server and the client both changed the value in a conflicting manner.
-  -- The server kept its part, the client can either take whatever the server gave them
-  -- or deal with the conflict somehow, and then try to re-sync.
-  | ValueSyncResponseConflict !(Timed a) -- ^ The item at the server side
+  = -- | The client and server are fully in sync.
+    --
+    -- Nothing needs to be done at the client side.
+    ValueSyncResponseInSync
+  | -- | The client changed the value and server has succesfully been made aware of that.
+    --
+    -- The client needs to update its server time
+    ValueSyncResponseClientChanged !ServerTime
+  | -- | This value has been changed on the server side.
+    --
+    -- The client should change it too.
+    ValueSyncResponseServerChanged !(Timed a)
+  | -- | The item at the server side
+    ValueSyncResponseConflict !(Timed a)
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ValueSyncResponse a)
@@ -210,14 +209,14 @@ instance FromJSON a => FromJSON (ValueSyncResponse a) where
 instance ToJSON a => ToJSON (ValueSyncResponse a) where
   toJSON isr =
     object $
-    let o s rest = ("type" .= (s :: String)) : rest
-        oe s = o s []
-     in case isr of
-          ValueSyncResponseInSync -> oe "in-sync"
-          ValueSyncResponseClientChanged t -> o "client-changed" ["time" .= t]
-          ValueSyncResponseServerChanged Timed {..} ->
-            o "server-changed" ["value" .= timedValue, "time" .= timedTime]
-          ValueSyncResponseConflict a -> o "conflict" ["value" .= a]
+      let o s rest = ("type" .= (s :: String)) : rest
+          oe s = o s []
+       in case isr of
+            ValueSyncResponseInSync -> oe "in-sync"
+            ValueSyncResponseClientChanged t -> o "client-changed" ["time" .= t]
+            ValueSyncResponseServerChanged Timed {..} ->
+              o "server-changed" ["value" .= timedValue, "time" .= timedTime]
+            ValueSyncResponseConflict a -> o "conflict" ["value" .= a]
 
 -- | Produce an 'ItemSyncRequest' from a 'ClientItem'.
 --
@@ -229,14 +228,14 @@ makeValueSyncRequest (ClientValue t cf) =
     Changed -> ValueSyncRequestKnownButChanged t
 
 data ValueMergeResult a
-  -- | The merger went succesfully, no conflicts or desyncs
-  = MergeSuccess !(ClientValue a)
-  -- | There was a merge conflict. The server and client had different, conflicting versions.
-  | MergeConflict !a !(Timed a) -- ^ The item at the server side
-  | MergeMismatch
-  -- ^ The server responded with a response that did not make sense given the client's request.
-  --
-  -- This should not happen in practice.
+  = -- | The merger went succesfully, no conflicts or desyncs
+    MergeSuccess !(ClientValue a)
+  | -- | The item at the server side
+    MergeConflict !a !(Timed a)
+  | -- | The server responded with a response that did not make sense given the client's request.
+    --
+    -- This should not happen in practice.
+    MergeMismatch
   deriving (Show, Eq, Generic)
 
 instance Validity a => Validity (ValueMergeResult a)
@@ -301,7 +300,7 @@ mergeIgnoringProblems cs mr =
 -- * Idempotent
 -- * The same on all clients
 mergeUsingFunction ::
-     (a -> Timed a -> Timed a) -> ClientValue a -> ValueMergeResult a -> ClientValue a
+  (a -> Timed a -> Timed a) -> ClientValue a -> ValueMergeResult a -> ClientValue a
 mergeUsingFunction func cs mr =
   case mr of
     MergeSuccess cs' -> cs'
@@ -318,33 +317,35 @@ mergeFromServer = mergeUsingFunction (\_ serverItem -> serverItem)
 
 -- | Serve an 'ValueSyncRequest' using the current 'ServerValue', producing an 'ValueSyncResponse' and a new 'ServerValue'.
 processServerValueSync ::
-     ServerValue a -> ValueSyncRequest a -> (ValueSyncResponse a, ServerValue a)
+  ServerValue a -> ValueSyncRequest a -> (ValueSyncResponse a, ServerValue a)
 processServerValueSync sv@(ServerValue t@(Timed _ st)) sr =
   case sr of
     ValueSyncRequestKnown ct ->
       if ct >= st
-                -- The client time is equal to the server time.
-                -- The client indicates that the item was not modified at their side.
-                -- This means that the items are in sync.
-                -- (Unless the server somehow modified the item but not its server time,
-                -- which would beconsidered a bug.)
-        then (ValueSyncResponseInSync, sv)
-                -- The client time is less than the server time
-                -- That means that the server has synced with another client in the meantime.
-                -- Since the client indicates that the item was not modified at their side,
-                -- we can just send it back to the client to have them update their version.
-                -- No conflict here.
-        else (ValueSyncResponseServerChanged t, sv)
+        then-- The client time is equal to the server time.
+        -- The client indicates that the item was not modified at their side.
+        -- This means that the items are in sync.
+        -- (Unless the server somehow modified the item but not its server time,
+        -- which would beconsidered a bug.)
+          (ValueSyncResponseInSync, sv)
+        else-- The client time is less than the server time
+        -- That means that the server has synced with another client in the meantime.
+        -- Since the client indicates that the item was not modified at their side,
+        -- we can just send it back to the client to have them update their version.
+        -- No conflict here.
+          (ValueSyncResponseServerChanged t, sv)
     ValueSyncRequestKnownButChanged Timed {timedValue = ci, timedTime = ct} ->
       if ct >= st
-                -- The client time is equal to the server time.
-                -- The client indicates that the item *was* modified at their side.
-                -- This means that the server needs to be updated.
-        then let st' = incrementServerTime st
-              in ( ValueSyncResponseClientChanged st'
-                 , ServerValue (Timed {timedValue = ci, timedTime = st'}))
-                -- The client time is less than the server time
-                -- That means that the server has synced with another client in the meantime.
-                -- Since the client indicates that the item *was* modified at their side,
-                -- there is a conflict.
-        else (ValueSyncResponseConflict t, sv)
+        then-- The client time is equal to the server time.
+        -- The client indicates that the item *was* modified at their side.
+        -- This means that the server needs to be updated.
+
+          let st' = incrementServerTime st
+           in ( ValueSyncResponseClientChanged st',
+                ServerValue (Timed {timedValue = ci, timedTime = st'})
+              )
+        else-- The client time is less than the server time
+        -- That means that the server has synced with another client in the meantime.
+        -- Since the client indicates that the item *was* modified at their side,
+        -- there is a conflict.
+          (ValueSyncResponseConflict t, sv)

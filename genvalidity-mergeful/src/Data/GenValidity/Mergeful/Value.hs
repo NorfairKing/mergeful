@@ -3,10 +3,8 @@
 module Data.GenValidity.Mergeful.Value where
 
 import Data.GenValidity
-
-import Data.Mergeful.Value
-
 import Data.GenValidity.Mergeful.Timed ()
+import Data.Mergeful.Value
 
 instance GenUnchecked ChangedFlag
 

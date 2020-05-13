@@ -3,10 +3,8 @@
 module Data.GenValidity.Mergeful.Item where
 
 import Data.GenValidity
-
-import Data.Mergeful.Item
-
 import Data.GenValidity.Mergeful.Timed ()
+import Data.Mergeful.Item
 
 instance GenUnchecked a => GenUnchecked (ItemMergeResult a)
 

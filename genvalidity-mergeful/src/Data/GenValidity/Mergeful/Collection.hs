@@ -20,11 +20,14 @@ instance GenUnchecked ClientId
 
 instance GenValid ClientId
 
-instance (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
-         GenUnchecked (ClientStore ci si a)
+instance
+  (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
+  GenUnchecked (ClientStore ci si a)
 
-instance (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
-         GenValid (ClientStore ci si a) where
+instance
+  (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
+  GenValid (ClientStore ci si a)
+  where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- genValid
@@ -43,11 +46,14 @@ instance (GenValid si, Show si, Ord si, GenValid a) => GenValid (ServerStore si 
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
-         GenUnchecked (SyncRequest ci si a)
+instance
+  (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
+  GenUnchecked (SyncRequest ci si a)
 
-instance (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
-         GenValid (SyncRequest ci si a) where
+instance
+  (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
+  GenValid (SyncRequest ci si a)
+  where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- genValid
@@ -66,11 +72,14 @@ instance GenValid si => GenValid (ClientAddition si) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
-         GenUnchecked (SyncResponse ci si a)
+instance
+  (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
+  GenUnchecked (SyncResponse ci si a)
 
-instance (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
-         GenValid (SyncResponse ci si a) where
+instance
+  (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
+  GenValid (SyncResponse ci si a)
+  where
   genValid =
     (`suchThat` isValid) $ do
       identifiers <- scale (* 2) genValid
@@ -83,10 +92,11 @@ instance (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a
       (s13, s14) <- splitSet s06
       (s15, s16) <- splitSet s07
       syncResponseClientAdded <-
-        do m <- genValid :: Gen (Map ci ())
-           if S.null s08
-             then pure M.empty
-             else forM m $ \() -> ClientAddition <$> elements (S.toList s08) <*> genValid
+        do
+          m <- genValid :: Gen (Map ci ())
+          if S.null s08
+            then pure M.empty
+            else forM m $ \() -> ClientAddition <$> elements (S.toList s08) <*> genValid
       syncResponseClientChanged <- mapWithIds s09
       let syncResponseClientDeleted = s10
       syncResponseServerAdded <- mapWithIds s11
