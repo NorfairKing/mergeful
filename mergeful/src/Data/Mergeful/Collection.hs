@@ -639,7 +639,7 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
                 (clientStoreDeletedItems cs)
                 syncResponseConflictsClientDeleted,
             newModifiedItems,
-            clientStoreSyncedItems cs
+            clientStoreSyncedItems cs `M.difference` M.fromSet (const ()) syncResponseServerDeleted
           ]
       newSyncedButChangedItems =
         M.unions
@@ -659,8 +659,7 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
         { clientStoreAddedItems = addedItemsLeftovers,
           clientStoreSyncedButChangedItems = newSyncedButChangedItems `M.difference` synced,
           clientStoreDeletedItems = deletedItemsLeftovers `M.difference` synced,
-          clientStoreSyncedItems =
-            synced `M.difference` M.fromSet (const ()) syncResponseServerDeleted
+          clientStoreSyncedItems = synced
         }
 
 -- | Merge the local added items with the ones that the server has acknowledged as added.
