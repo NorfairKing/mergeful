@@ -2,6 +2,7 @@ resolver: lts-14.7
 packages:
   - mergeful
   - genvalidity-mergeful
+  - mergeful-persistent
 extra-deps:
   - github: NorfairKing/validity
     commit: 62ae8c188fba688ce312579116b1b3e0b291a198
