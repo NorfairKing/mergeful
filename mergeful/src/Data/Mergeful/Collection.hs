@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -630,6 +631,33 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
           clientStoreSyncedItems =
             synced `M.difference` M.fromSet (const ()) syncResponseServerDeleted
         }
+
+data ClientSyncProcessor ci si a (m :: * -> *)
+  = ClientSyncProcessor
+      { clientSyncProcessorSyncClientAdded :: Map ci (ClientAddition si) -> m (),
+        clientSyncProcessorSyncClientChanged :: Map si ServerTime -> m (),
+        clientSyncProcessorSyncClientDeleted :: Set si -> m (),
+        clientSyncProcessorSyncServerAdded :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncServerChanged :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncServerDeleted :: Set si -> m (),
+        clientSyncProcessorSyncChangeConflict :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncConflictsClientDeleted :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncConflictsServerDeleted :: Set si -> m ()
+      }
+  deriving (Generic)
+
+mergeSyncResponseCustom :: Monad m => ClientSyncProcessor ci si a m -> SyncResponse ci si a -> m ()
+mergeSyncResponseCustom ClientSyncProcessor {..} SyncResponse {..} = do
+  -- The order here matters!
+  clientSyncProcessorSyncChangeConflict syncResponseConflicts
+  clientSyncProcessorSyncConflictsClientDeleted syncResponseConflictsClientDeleted
+  clientSyncProcessorSyncConflictsServerDeleted syncResponseConflictsServerDeleted
+  clientSyncProcessorSyncServerAdded syncResponseServerAdded
+  clientSyncProcessorSyncServerChanged syncResponseServerChanged
+  clientSyncProcessorSyncServerDeleted syncResponseServerDeleted
+  clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
+  clientSyncProcessorSyncClientChanged syncResponseClientChanged
+  clientSyncProcessorSyncClientAdded syncResponseClientAdded
 
 -- | Merge an 'SyncResponse' into the current 'ClientStore' by taking whatever the server gave the client.
 --
