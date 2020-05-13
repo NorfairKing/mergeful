@@ -24,7 +24,21 @@ import TestUtils
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
 spec :: Spec
-spec = modifyMaxShrinks (const 0) $ oneClientSpec $ pure ()
+spec = modifyMaxShrinks (const 0) $ oneClientSpec $ do
+  describe "Single Client" $ do
+    describe "Single item" $ do
+      it "succesfully downloads an item from the server for an empty client" $
+        \te -> forAllValid $ \sstore1 -> runTest te $ do
+          setupClient initialClientStore
+          setupServer sstore1
+          req <- clientMakeSyncRequest
+          resp <- serverProcessSync req
+          sstore2 <- serverGetStore
+          clientMergeSyncResponse resp
+          cstore2 <- clientGetStore
+          lift $ do
+            sstore2 `shouldBe` sstore1
+            clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
 
 type T a = ReaderT TestEnv IO a
 

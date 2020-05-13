@@ -36,7 +36,7 @@ ClientThing
 |]
 
 setupUnsyncedClientQuery :: [ServerThing] -> SqlPersistT IO ()
-setupUnsyncedClientQuery sts = pure ()
+setupUnsyncedClientQuery sts = undefined sts
 
 setupClientQuery :: ClientStore ClientThingId ServerThingId ServerThing -> SqlPersistT IO ()
 setupClientQuery ClientStore {..} = pure ()

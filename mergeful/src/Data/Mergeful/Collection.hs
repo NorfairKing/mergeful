@@ -52,6 +52,8 @@ module Data.Mergeful.Collection
     deleteItemFromClientStore,
     initialSyncRequest,
     makeSyncRequest,
+    mergeSyncResponseCustom,
+    ClientSyncProcessor (..),
     mergeSyncResponseFromServer,
     mergeSyncResponseFromClient,
     mergeSyncResponseUsingCRDT,
@@ -632,7 +634,7 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
             -- keep the ones that the strategy wants to keep.
             M.mapMaybe id $
               M.intersectionWith
-                ( \ci s@(Timed si _) -> case itemMergeStrategyMergeClientDeletedConflict si of
+                ( \_ s@(Timed si _) -> case itemMergeStrategyMergeClientDeletedConflict si of
                     TakeRemoteChange -> Just s
                     StayDeleted -> Nothing
                 )
@@ -719,7 +721,7 @@ mergeSyncedButChangedConflicts func clientItems =
       (Map si (Timed a), Map si (Timed a))
     go tup@(unresolved, resolved) key s@(Timed si st) = case M.lookup key clientItems of
       Nothing -> tup -- TODO not even sure what this would mean. Should not happen I guess. Just throw it away
-      Just c@(Timed ci ct) -> case func ci si of
+      Just c@(Timed ci _) -> case func ci si of
         KeepLocal -> (M.insert key c unresolved, resolved)
         TakeRemote -> (unresolved, M.insert key s resolved)
         Merged mi -> (unresolved, M.insert key (Timed mi st) resolved)
