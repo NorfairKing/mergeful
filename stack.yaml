@@ -1,11 +1,11 @@
-resolver: lts-14.7
+resolver: lts-14.23
 packages:
   - mergeful
   - genvalidity-mergeful
   - mergeful-persistent
 extra-deps:
   - github: NorfairKing/validity
-    commit: 62ae8c188fba688ce312579116b1b3e0b291a198
+    commit: 95ec39a2535b9c83b1163015fd2ca28317debf42
     subdirs:
     - genvalidity
     - genvalidity-aeson
@@ -39,7 +39,7 @@ extra-deps:
     - validity-uuid
     - validity-vector
 nix:
-  path: [ "nixpkgs=https://github.com/NixOS/nixpkgs/archive/e6b93257b0ba070bd12810eeacbe281396c24316.tar.gz" ]
+  path: [ "nixpkgs=https://github.com/NixOS/nixpkgs/archive/a87b506140a7267477103759c3f8da5b2e8d994e.tar.gz" ]
   add-gc-roots: true
   packages:
   - zlib
