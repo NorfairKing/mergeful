@@ -1,21 +1,20 @@
 final: previous:
 with final.haskell.lib;
+let
+  mergefulPkg = name:
+    doBenchmark (
+      failOnAllWarnings (
+        final.haskellPackages.callCabal2nix name (final.gitignoreSource (../. + "/${name}")) {}
+      )
+    );
 
+in
 {
   mergefulPackages =
     {
-      mergeful =
-        failOnAllWarnings (
-          final.haskellPackages.callCabal2nix "mergeful" (final.gitignoreSource ../mergeful) {}
-        );
-      genvalidity-mergeful =
-        failOnAllWarnings (
-          final.haskellPackages.callCabal2nix "genvalidity-mergeful" (final.gitignoreSource ../genvalidity-mergeful) {}
-        );
-      mergeful-persistent =
-        failOnAllWarnings (
-          final.haskellPackages.callCabal2nix "mergeful-persistent" (final.gitignoreSource ../mergeful-persistent) {}
-        );
+      mergeful = mergefulPkg "mergeful";
+      genvalidity-mergeful = mergefulPkg "genvalidity-mergeful";
+      mergeful-persistent = mergefulPkg "mergeful-persistent";
     };
   haskellPackages =
     previous.haskellPackages.override (
