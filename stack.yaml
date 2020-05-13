@@ -19,6 +19,7 @@ extra-deps:
     - genvalidity-hspec-hashable
     - genvalidity-hspec-optics
     - genvalidity-path
+    - genvalidity-persistent
     - genvalidity-property
     - genvalidity-scientific
     - genvalidity-text
@@ -31,6 +32,7 @@ extra-deps:
     - validity-bytestring
     - validity-containers
     - validity-path
+    - validity-persistent
     - validity-primitive
     - validity-scientific
     - validity-text

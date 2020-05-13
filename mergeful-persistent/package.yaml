@@ -31,7 +31,7 @@ tests:
       - genvalidity
       - genvalidity-hspec
       - genvalidity-mergeful
-        # - genvalidity-persistent
+      - genvalidity-persistent
       - hspec
       - mergeful
       - mergeful-persistent
