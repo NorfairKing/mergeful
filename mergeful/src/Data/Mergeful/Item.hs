@@ -382,6 +382,8 @@ mergeItemSyncResponseUsingCRDT = mergeItemSyncResponseUsingStrategy . mergeUsing
 data ItemMergeStrategy a
   = ItemMergeStrategy
       { -- | How to merge modification conflicts
+        --
+        -- The first argument is the client item and the second argument is the server item.
         itemMergeStrategyMergeChangeConflict :: a -> a -> ChangeConflictResolution a,
         -- | How to merge conflicts where the client deleted an item that the server modified
         itemMergeStrategyMergeClientDeletedConflict :: a -> ClientDeletedConflictResolution,

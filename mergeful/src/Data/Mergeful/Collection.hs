@@ -615,6 +615,11 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
         mergeSyncedButChangedItems (clientStoreSyncedButChangedItems cs) syncResponseClientChanged
       deletedItemsLeftovers =
         mergeDeletedItems (clientStoreDeletedItems cs) syncResponseClientDeleted
+      (conflictsThatStayUnresolved, conflictsThatGotResolved) =
+        mergeSyncedButChangedConflicts
+          itemMergeStrategyMergeChangeConflict
+          (clientStoreSyncedButChangedItems cs)
+          syncResponseConflicts
       synced =
         M.unions
           [ newSyncedItems,
@@ -622,20 +627,13 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
             syncResponseServerChanged,
             -- Merge the synced but changed (the only ones that could have caused a conflict)
             -- with the ones that the response indicated were a conflict.
-            M.intersectionWith
-              ( \c@(Timed ci _) s@(Timed si st) -> case itemMergeStrategyMergeChangeConflict ci si of
-                  KeepLocal -> c
-                  TakeRemote -> s
-                  Merged mi -> Timed mi st
-              )
-              (clientStoreSyncedButChangedItems cs)
-              syncResponseConflicts,
+            conflictsThatGotResolved,
             -- Of the items that the server changed but the client deleted,
             -- keep the ones that the strategy wants to keep.
             M.mapMaybe id $
               M.intersectionWith
-                ( \ci (Timed si st) -> case itemMergeStrategyMergeClientDeletedConflict si of
-                    TakeRemoteChange -> Just $ Timed si st
+                ( \ci s@(Timed si _) -> case itemMergeStrategyMergeClientDeletedConflict si of
+                    TakeRemoteChange -> Just s
                     StayDeleted -> Nothing
                 )
                 (clientStoreDeletedItems cs)
@@ -644,8 +642,19 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
             clientStoreSyncedItems cs
           ]
       newSyncedButChangedItems =
-        syncedButNotChangedLeftovers
-          `M.difference` M.fromSet (const ()) syncResponseConflictsServerDeleted
+        M.unions
+          [ -- Of the items that the client changed but the server deleted,
+            -- keep the ones that the strategy wants to keep
+            M.mapMaybe id $
+              M.intersectionWith
+                ( \c@(Timed ci _) () -> case itemMergeStrategyMergeServerDeletedConflict ci of
+                    KeepLocalChange -> Just c
+                    Delete -> Nothing
+                )
+                syncedButNotChangedLeftovers
+                (M.fromSet (const ()) syncResponseConflictsServerDeleted),
+            conflictsThatStayUnresolved
+          ]
    in ClientStore
         { clientStoreAddedItems = addedItemsLeftovers,
           clientStoreSyncedButChangedItems = newSyncedButChangedItems `M.difference` synced,
@@ -693,6 +702,28 @@ mergeSyncedButChangedItems local changed = M.foldlWithKey go (M.empty, M.empty) 
 -- | Merge the local deleted items with the ones that the server has acknowledged as deleted.
 mergeDeletedItems :: Ord i => Map i b -> Set i -> Map i b
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
+
+mergeSyncedButChangedConflicts ::
+  forall si a.
+  Ord si =>
+  (a -> a -> ChangeConflictResolution a) ->
+  Map si (Timed a) ->
+  Map si (Timed a) ->
+  (Map si (Timed a), Map si (Timed a))
+mergeSyncedButChangedConflicts func clientItems =
+  M.foldlWithKey go (M.empty, M.empty)
+  where
+    go ::
+      (Map si (Timed a), Map si (Timed a)) ->
+      si ->
+      Timed a ->
+      (Map si (Timed a), Map si (Timed a))
+    go tup@(unresolved, resolved) key s@(Timed si st) = case M.lookup key clientItems of
+      Nothing -> tup -- TODO not even sure what this would mean. Should not happen I guess. Just throw it away
+      Just c@(Timed ci ct) -> case func ci si of
+        KeepLocal -> (M.insert key c unresolved, resolved)
+        TakeRemote -> (unresolved, M.insert key s resolved)
+        Merged mi -> (unresolved, M.insert key (Timed mi st) resolved)
 
 data Identifier ci si
   = OnlyServer si
