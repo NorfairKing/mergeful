@@ -233,8 +233,8 @@ makeSyncedButChangedClientThing sid (Timed Thing {..} st) =
     { clientThingNumber = thingNumber,
       clientThingServerId = Just sid,
       clientThingServerTime = Just st,
-      clientThingChanged = False,
-      clientThingDeleted = True
+      clientThingChanged = True,
+      clientThingDeleted = False
     }
 
 unmakeDeletedClientThing :: Entity ClientThing -> (ServerThingId, ServerTime)
