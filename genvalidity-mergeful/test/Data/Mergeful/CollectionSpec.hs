@@ -205,21 +205,19 @@ spec = modifyMaxShrinks (min 0) $ do
     let strat = mergeFromServerStrategy
     helperFunctionsSpec strat
     mergeFunctionSpec @Int strat
-    noDivergenceSpec @Int mergeFromServerStrategy
+    noDivergenceSpec @Int strat
     emptyResponseSpec @Int strat
-    noDifferentExceptForConflicts @Int mergeSyncResponseFromServer mergeSyncResponseFromClient
+    noDifferentExceptForConflicts @Int strat mergeFromClientStrategy
     xdescribe "does not hold" $ noDataLossSpec @Int strat
   describe "Syncing with mergeSyncResponseUsingStrategy with a GCounter" $ do
     let strat = mergeUsingCRDTStrategy max
-        mergeFunc :: (Ord ci, Ord si) => ClientStore ci si Int -> SyncResponse ci si Int -> ClientStore ci si Int
-        mergeFunc = mergeSyncResponseUsingStrategy strat
     helperFunctionsSpec strat
     mergeFunctionSpec strat
     noDataLossSpec strat
     noDivergenceSpec strat
     emptyResponseSpec strat
-    noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromClient
-    noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromServer
+    noDifferentExceptForConflicts strat mergeFromClientStrategy
+    noDifferentExceptForConflicts strat mergeFromServerStrategy
 
 helperFunctionsSpec :: ItemMergeStrategy Int -> Spec
 helperFunctionsSpec ItemMergeStrategy {..} = do
@@ -702,20 +700,12 @@ emptyResponseSpec strat = do
 noDifferentExceptForConflicts ::
   forall a.
   (Show a, Eq a, Ord a, GenValid a) =>
-  ( forall ci si.
-    (Ord ci, Ord si) =>
-    ClientStore ci si a ->
-    SyncResponse ci si a ->
-    ClientStore ci si a
-  ) ->
-  ( forall ci si.
-    (Ord ci, Ord si) =>
-    ClientStore ci si a ->
-    SyncResponse ci si a ->
-    ClientStore ci si a
-  ) ->
+  ItemMergeStrategy a ->
+  ItemMergeStrategy a ->
   Spec
-noDifferentExceptForConflicts mergeFunc1 mergeFunc2 =
+noDifferentExceptForConflicts strat1 strat2 = do
+  let mergeFunc1 = mergeSyncResponseUsingStrategy strat1
+      mergeFunc2 = mergeSyncResponseUsingStrategy strat2
   describe "mergeSyncResponseFromServer"
     $ it "only differs from mergeSyncResponseFromClient on conflicts"
     $ forAllValid
