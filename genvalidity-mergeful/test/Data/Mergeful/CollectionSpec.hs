@@ -199,14 +199,14 @@ spec = modifyMaxShrinks (min 0) $ do
     mergeFunctionSpec @Int strat
     noDataLossSpec @Int strat
     xdescribe "does not hold" $ do
-      emptyResponseSpec @Int mergeSyncResponseFromClient
-      noDivergenceSpec @Int mergeFromClientStrategy
+      emptyResponseSpec @Int strat
+      noDivergenceSpec @Int strat
   describe "Syncing with mergeSyncResponseFromServer" $ do
     let strat = mergeFromServerStrategy
     helperFunctionsSpec strat
     mergeFunctionSpec @Int strat
     noDivergenceSpec @Int mergeFromServerStrategy
-    emptyResponseSpec @Int mergeSyncResponseFromServer
+    emptyResponseSpec @Int strat
     noDifferentExceptForConflicts @Int mergeSyncResponseFromServer mergeSyncResponseFromClient
     xdescribe "does not hold" $ noDataLossSpec @Int strat
   describe "Syncing with mergeSyncResponseUsingStrategy with a GCounter" $ do
@@ -217,7 +217,7 @@ spec = modifyMaxShrinks (min 0) $ do
     mergeFunctionSpec strat
     noDataLossSpec strat
     noDivergenceSpec strat
-    emptyResponseSpec mergeFunc
+    emptyResponseSpec strat
     noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromClient
     noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromServer
 
@@ -683,14 +683,10 @@ noDivergenceSpec strat = do
 emptyResponseSpec ::
   forall a.
   (Show a, Eq a, Ord a, GenValid a) =>
-  ( forall ci si.
-    (Ord ci, Ord si) =>
-    ClientStore ci si a ->
-    SyncResponse ci si a ->
-    ClientStore ci si a
-  ) ->
+  ItemMergeStrategy a ->
   Spec
-emptyResponseSpec mergeFunc =
+emptyResponseSpec strat = do
+  let mergeFunc = mergeSyncResponseUsingStrategy strat
   it "is returns an empty response on the second sync with no modifications"
     $ forAllValid
     $ \cstore1 ->
