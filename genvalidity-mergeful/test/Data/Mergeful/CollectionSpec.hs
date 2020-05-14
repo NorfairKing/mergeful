@@ -33,7 +33,7 @@ import Text.Show.Pretty
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
 spec :: Spec
-spec = modifyMaxShrinks (min 1000) $ do
+spec = modifyMaxShrinks (min 0) $ do
   genValidSpec @ClientId
   jsonSpecOnValid @ClientId
   genValidSpec @(ClientStore ClientId Int Int)
@@ -596,6 +596,7 @@ noDataLossSpec mergeFunc =
                 -- Client B merges the response
                 let cBstore2 = mergeSyncResponseFromClient @ClientId @UUID cBstore1 resp2
                 -- Client does not update, but keeps its conflict
+                -- Client A and Client B now *do not* have the same store
                 lift $
                   cBstore2
                     `shouldBe` ( initialClientStore
@@ -603,7 +604,6 @@ noDataLossSpec mergeFunc =
                                    }
                                )
 
--- Client A and Client B now *do not* have the same store
 noDivergenceSpec ::
   forall a.
   (Show a, Ord a, GenValid a) =>
@@ -648,9 +648,11 @@ noDivergenceSpec mergeFunc =
                     `shouldBe` (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
                 -- Client A merges the response
                 let cAstore2 = mergeFunc cAstore1 resp1
-                lift $
-                  cAstore2
-                    `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
+                -- This doesn't hold for CRDT merges because we can't guarantee that i2 and i3 are modified according to the CRDT
+                -- Indeed, if the CRDT is a GCounter, then if i2 is lower than i1 then the server will keep i1 but otherwise it will take i2
+                -- lift $
+                --   cAstore2
+                --     `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
                 -- Client B makes sync request 2
                 let req2 = makeSyncRequest cBstore1
                 -- The server processes sync request 2
@@ -662,12 +664,26 @@ noDivergenceSpec mergeFunc =
                   sstore3 `shouldBe` sstore2
                 -- Client B merges the response
                 let cBstore2 = mergeFunc cBstore1 resp2
-                -- Client does not update, but keeps its conflict
+                -- lift $ do
+                -- This doesn't hold for CRDT merges because we can't guarantee that i2 and i3 are modified according to the CRDT
+                -- Indeed, if the CRDT is a GCounter, then if i3 is lower than what the server kept in the previous merge then the server will keep what it had but otherwise it will take i3
+                -- cBstore2
+                --   `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
+                -- This also doesn't hold in a CRDT case because the change that B might have had going through will not have arrived at A yet.
+                -- We need to sync again first.
+                -- Client A and Client B now have the same store
+                -- cBstore2 `shouldBe` cAstore2
+
+                -- Client A makes sync request 3
+                let req3 = makeSyncRequest cAstore2
+                -- The server processes sync request 3
+                (resp3, sstore4) <- processServerSync genD sstore3 req3
+                -- Client A merges sync response 3
+                let cAstore3 = mergeFunc cAstore2 resp3
+                -- Now Client A and Client B should have the same store
                 lift $ do
-                  cBstore2
-                    `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
-                  -- Client A and Client B now have the same store
-                  cBstore2 `shouldBe` cAstore2
+                  sstore4 `shouldBe` sstore3
+                  cAstore3 `shouldBe` cBstore2
 
 emptyResponseSpec ::
   forall a.

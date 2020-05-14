@@ -615,9 +615,20 @@ pureClientSyncProcessor =
       clientSyncProcessorSyncServerAdded = \m ->
         modify (\cs -> cs {clientStoreSyncedItems = m `M.union` clientStoreSyncedItems cs}),
       clientSyncProcessorSyncServerChanged = \m ->
-        modify (\cs -> cs {clientStoreSyncedItems = m `M.union` clientStoreSyncedItems cs}),
-      clientSyncProcessorSyncServerDeleted = \m ->
-        modify (\cs -> cs {clientStoreSyncedItems = clientStoreSyncedItems cs `M.difference` M.fromSet (const ()) m})
+        modify
+          ( \cs ->
+              let newSynced = m `M.union` clientStoreSyncedItems cs
+               in cs {clientStoreSyncedItems = newSynced, clientStoreSyncedButChangedItems = clientStoreSyncedButChangedItems cs `M.difference` newSynced}
+          ),
+      clientSyncProcessorSyncServerDeleted = \s ->
+        modify
+          ( \cs ->
+              let m = M.fromSet (const ()) s
+               in cs
+                    { clientStoreSyncedItems = clientStoreSyncedItems cs `M.difference` m,
+                      clientStoreSyncedButChangedItems = clientStoreSyncedButChangedItems cs `M.difference` m
+                    }
+          )
     }
 
 -- | Merge the local added items with the ones that the server has acknowledged as added.
