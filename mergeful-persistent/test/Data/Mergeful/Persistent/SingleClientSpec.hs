@@ -32,9 +32,18 @@ spec = modifyMaxShrinks (const 0) $ oneClientSpec $ do
         setupServer sstore
         sstore' <- serverGetStore
         liftIO $ sstore' `shouldBe` sstore
-  describe "mergeFromServerStrategy" $ mergeFunctionSpec mergeFromServerStrategy
-  describe "mergeFromClientStrategy" $ mergeFunctionSpec mergeFromClientStrategy
-  describe "mergeUsingCRDTStrategy" $ mergeFunctionSpec $ mergeUsingCRDTStrategy max
+  describe "mergeFromServerStrategy" $ do
+    let strat = mergeFromServerStrategy
+    mergeFunctionSpec strat
+    emptyResponseSpec strat
+  describe "mergeFromClientStrategy" $ do
+    let strat = mergeFromClientStrategy
+    mergeFunctionSpec strat
+    emptyResponseSpec strat
+  describe "mergeUsingCRDTStrategy" $ do
+    let strat = mergeUsingCRDTStrategy max
+    mergeFunctionSpec strat
+    emptyResponseSpec strat
 
 mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 mergeFunctionSpec strat = do
@@ -114,6 +123,20 @@ mergeFunctionSpec strat = do
                 cstore2 `shouldBe` cstore3
                 sstore2 `shouldBe` sstore3
 
+emptyResponseSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
+emptyResponseSpec strat = do
+  let mergeFunc = clientMergeSyncResponse strat
+  it "is returns an empty response on the second sync with no modifications" $ \te -> forAllValid $ \cstore1 -> forAllValid $ \sstore1 ->
+    runTest te $ do
+      setupClient cstore1
+      setupServer sstore1
+      req1 <- clientMakeSyncRequest
+      resp1 <- serverProcessSync req1
+      mergeFunc resp1
+      req2 <- clientMakeSyncRequest
+      resp2 <- serverProcessSync req2
+      lift $ resp2 `shouldBe` emptySyncResponse
+
 type T a = ReaderT TestEnv IO a
 
 runTest :: TestEnv -> T a -> IO a
@@ -147,9 +170,6 @@ sync strat = do
   clientMergeSyncResponse strat resp
   cstore2 <- clientGetStore
   pure (cstore1, sstore1, sstore2, cstore2)
-
--- setupUnsyncedClient :: [Thing] -> T ()
--- setupUnsyncedClient = runClientDB . setupUnsyncedClientQuery
 
 setupClient :: CS -> T ()
 setupClient = runClientDB . setupClientQuery

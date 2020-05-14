@@ -8,7 +8,6 @@ module Data.Mergeful.Persistent.TwoClientsSpec
 where
 
 import Control.Monad.Reader
-import Data.List
 import qualified Data.Map as M
 import Data.Mergeful
 import qualified Data.Set as S
@@ -52,7 +51,6 @@ spec = modifyMaxShrinks (const 0) $ twoClientsSpec $ do
 mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 mergeFunctionSpec strat = do
   let mergeFunc = clientMergeSyncResponse strat
-      syncFunc = sync strat
   describe "Multiple clients" $ do
     describe "Single item" $ do
       it "successfully syncs an addition accross to a second client" $ \te -> forAllValid $ \k -> forAllValid $ \i -> runTest te $ do
@@ -81,7 +79,6 @@ mergeFunctionSpec strat = do
             lift $ cAstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
             -- Client B makes sync request 2
             req2 <- clientMakeSyncRequest B
-            cBstore2 <- clientGetStore B
             -- The server processes sync request 2
             resp2 <- serverProcessSync req2
             sstore3 <- serverGetStore
@@ -448,7 +445,6 @@ noDivergenceSpec strat = do
           -- In case of a previous merge, the synced item will still be changed, so we need to sync again with B and then with A
           req3 <- clientMakeSyncRequest B
           resp3 <- serverProcessSync req3
-          sstore4 <- serverGetStore
           mergeFunc B resp3
           cBstore3 <- clientGetStore B
           req4 <- clientMakeSyncRequest A
@@ -482,20 +478,6 @@ type SReq = SyncRequest ClientThingId ServerThingId Thing
 type SS = ServerStore ServerThingId Thing
 
 type SResp = SyncResponse ClientThingId ServerThingId Thing
-
-sync :: ItemMergeStrategy Thing -> Client -> T (CS, SS, SS, CS)
-sync strat client = do
-  cstore1 <- clientGetStore client
-  req <- clientMakeSyncRequest client
-  sstore1 <- serverGetStore
-  resp <- serverProcessSync req
-  sstore2 <- serverGetStore
-  clientMergeSyncResponse strat client resp
-  cstore2 <- clientGetStore client
-  pure (cstore1, sstore1, sstore2, cstore2)
-
--- setupUnsyncedClient :: [Thing] -> T ()
--- setupUnsyncedClient = runClientDB . setupUnsyncedClientQuery
 
 setupClient :: Client -> CS -> T ()
 setupClient client = runClientDB client . setupClientQuery
