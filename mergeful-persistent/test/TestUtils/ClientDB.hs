@@ -10,6 +10,8 @@
 
 module TestUtils.ClientDB where
 
+import Control.Monad
+import qualified Data.Map as M
 import Data.Maybe
 import Data.Mergeful
 import Data.Mergeful.Persistent ()
@@ -61,50 +63,158 @@ instance Validity ClientThing where
             else True
       ]
 
-setupUnsyncedClientQuery :: [ServerThing] -> SqlPersistT IO ()
-setupUnsyncedClientQuery = undefined
+setupUnsyncedClientQuery :: [Thing] -> SqlPersistT IO ()
+setupUnsyncedClientQuery = mapM_ $ \Thing {..} ->
+  insert_
+    ClientThing
+      { clientThingNumber = thingNumber,
+        clientThingServerId = Nothing,
+        clientThingServerTime = Nothing,
+        clientThingDeleted = False,
+        clientThingChanged = False
+      }
 
-setupClientQuery :: ClientStore ClientThingId ServerThingId ServerThing -> SqlPersistT IO ()
-setupClientQuery ClientStore {..} = pure ()
+setupClientQuery :: ClientStore ClientThingId ServerThingId Thing -> SqlPersistT IO ()
+setupClientQuery ClientStore {..} = do
+  forM_ (M.toList clientStoreAddedItems) $ \(cid, t) ->
+    insertKey cid $ makeUnsyncedClientThing t
+  forM_ (M.toList clientStoreSyncedItems) $ \(sid, tt) ->
+    insert_ $ makeSyncedClientThing sid tt
+  forM_ (M.toList clientStoreSyncedButChangedItems) $ \(sid, tt) ->
+    insert_ $ makeSyncedButChangedClientThing sid tt
+  forM_ (M.toList clientStoreDeletedItems) $ \(sid, st) -> insert_ $ makeDeletedClientThing sid st
 
-clientGetStoreQuery :: SqlPersistT IO (ClientStore ClientThingId ServerThingId ServerThing)
-clientGetStoreQuery = pure undefined
+clientGetStoreQuery :: SqlPersistT IO (ClientStore ClientThingId ServerThingId Thing)
+clientGetStoreQuery = do
+  clientStoreAddedItems <-
+    M.fromList . map unmakeUnsyncedClientThing
+      <$> selectList
+        [ ClientThingServerId ==. Nothing,
+          ClientThingServerTime ==. Nothing
+        ]
+        []
+  clientStoreSyncedItems <-
+    M.fromList . map unmakeSyncedClientThing
+      <$> selectList
+        [ ClientThingServerId !=. Nothing,
+          ClientThingServerTime !=. Nothing,
+          ClientThingChanged ==. False,
+          ClientThingDeleted ==. False
+        ]
+        []
+  clientStoreSyncedButChangedItems <-
+    M.fromList . map unmakeSyncedClientThing
+      <$> selectList
+        [ ClientThingServerId !=. Nothing,
+          ClientThingServerTime !=. Nothing,
+          ClientThingChanged ==. True,
+          ClientThingDeleted ==. False
+        ]
+        []
+  clientStoreDeletedItems <-
+    M.fromList . map unmakeDeletedClientThing
+      <$> selectList
+        [ ClientThingDeleted ==. True
+        ]
+        []
+  pure ClientStore {..}
 
-clientMakeSyncRequestQuery :: SqlPersistT IO (SyncRequest ClientThingId ServerThingId ServerThing)
-clientMakeSyncRequestQuery = pure undefined
+clientMakeSyncRequestQuery :: SqlPersistT IO (SyncRequest ClientThingId ServerThingId Thing)
+clientMakeSyncRequestQuery = do
+  syncRequestNewItems <-
+    M.fromList . map unmakeUnsyncedClientThing
+      <$> selectList
+        [ ClientThingServerId ==. Nothing,
+          ClientThingServerTime ==. Nothing
+        ]
+        []
+  syncRequestKnownItems <-
+    M.fromList . map unmakeDeletedClientThing
+      <$> selectList
+        [ ClientThingServerId !=. Nothing,
+          ClientThingServerTime !=. Nothing,
+          ClientThingChanged ==. False,
+          ClientThingDeleted ==. False
+        ]
+        []
+  syncRequestKnownButChangedItems <-
+    M.fromList . map unmakeSyncedClientThing
+      <$> selectList
+        [ ClientThingServerId !=. Nothing,
+          ClientThingServerTime !=. Nothing,
+          ClientThingChanged ==. True,
+          ClientThingDeleted ==. False
+        ]
+        []
+  syncRequestDeletedItems <-
+    M.fromList . map unmakeDeletedClientThing
+      <$> selectList
+        [ ClientThingDeleted ==. True
+        ]
+        []
+  pure SyncRequest {..}
 
-clientMergeSyncResponseQuery :: SyncResponse ClientThingId ServerThingId ServerThing -> SqlPersistT IO ()
-clientMergeSyncResponseQuery SyncResponse {..} = pure ()
+clientMergeSyncResponseQuery :: ItemMergeStrategy Thing -> SyncResponse ClientThingId ServerThingId Thing -> SqlPersistT IO ()
+clientMergeSyncResponseQuery strat = mergeSyncResponseCustom strat clientSyncProcessor
 
-makeUnsyncedClientThing :: ServerThing -> ClientThing
-makeUnsyncedClientThing ServerThing {..} =
+clientSyncProcessor :: ClientSyncProcessor ClientThingId ServerThingId Thing (SqlPersistT IO)
+clientSyncProcessor = ClientSyncProcessor {..}
+
+unmakeUnsyncedClientThing :: Entity ClientThing -> (ClientThingId, Thing)
+unmakeUnsyncedClientThing (Entity cid ClientThing {..}) = (cid, Thing {thingNumber = clientThingNumber})
+
+makeUnsyncedClientThing :: Thing -> ClientThing
+makeUnsyncedClientThing Thing {..} =
   ClientThing
-    { clientThingNumber = serverThingNumber,
+    { clientThingNumber = thingNumber,
       clientThingDeleted = False,
       clientThingServerId = Nothing,
       clientThingChanged = False,
       clientThingServerTime = Nothing
     }
 
-makeSyncedClientThing :: ServerThingId -> Timed ServerThing -> ClientThing
-makeSyncedClientThing sid (Timed ServerThing {..} st) =
+unmakeSyncedClientThing :: Entity ClientThing -> (ServerThingId, Timed Thing)
+unmakeSyncedClientThing (Entity cid ClientThing {..}) =
+  ( fromJust clientThingServerId,
+    Timed
+      { timedValue = Thing {thingNumber = clientThingNumber},
+        timedTime = fromJust clientThingServerTime
+      }
+  )
+
+makeSyncedClientThing :: ServerThingId -> Timed Thing -> ClientThing
+makeSyncedClientThing sid (Timed Thing {..} st) =
   ClientThing
-    { clientThingNumber = serverThingNumber,
+    { clientThingNumber = thingNumber,
       clientThingServerId = Just sid,
       clientThingServerTime = Just st,
       clientThingChanged = False,
       clientThingDeleted = False
     }
 
-makeDeletedClientThing :: ServerThingId -> ClientThing
-makeDeletedClientThing sid =
+makeSyncedButChangedClientThing :: ServerThingId -> Timed Thing -> ClientThing
+makeSyncedButChangedClientThing sid (Timed Thing {..} st) =
+  ClientThing
+    { clientThingNumber = thingNumber,
+      clientThingServerId = Just sid,
+      clientThingServerTime = Just st,
+      clientThingChanged = False,
+      clientThingDeleted = True
+    }
+
+unmakeDeletedClientThing :: Entity ClientThing -> (ServerThingId, ServerTime)
+unmakeDeletedClientThing (Entity cid ClientThing {..}) =
+  (fromJust clientThingServerId, fromJust clientThingServerTime)
+
+makeDeletedClientThing :: ServerThingId -> ServerTime -> ClientThing
+makeDeletedClientThing sid st =
   ClientThing
     { clientThingNumber = 0, -- dummy
       clientThingServerId = Just sid,
-      clientThingServerTime = Just initialServerTime, -- dummy
+      clientThingServerTime = Just st,
       clientThingChanged = False, -- dummy
       clientThingDeleted = True
     }
 
-makeThing :: ClientThing -> Thing
-makeThing ClientThing {..} = Thing {thingNumber = clientThingNumber}
+clientMakeThing :: ClientThing -> Thing
+clientMakeThing ClientThing {..} = Thing {thingNumber = clientThingNumber}

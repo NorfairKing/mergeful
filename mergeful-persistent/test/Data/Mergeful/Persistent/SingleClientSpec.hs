@@ -25,16 +25,23 @@ import TestUtils
 
 spec :: Spec
 spec = modifyMaxShrinks (const 0) $ oneClientSpec $ do
+  describe "mergeFromServerStrategy" $ mergeFunctionSpec mergeFromServerStrategy
+  describe "mergeFromClientStrategy" $ mergeFunctionSpec mergeFromClientStrategy
+  describe "mergeUsingCRDTStrategy" $ mergeFunctionSpec $ mergeUsingCRDTStrategy max
+
+mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
+mergeFunctionSpec strat = do
+  let mergeFunc = clientMergeSyncResponse strat
   describe "Single Client" $ do
     describe "Single item" $ do
-      it "succesfully downloads an item from the server for an empty client" $
-        \te -> forAllValid $ \sstore1 -> runTest te $ do
+      it "succesfully downloads an item from the server for an empty client" $ \te ->
+        forAllValid $ \sstore1 -> runTest te $ do
           setupClient initialClientStore
           setupServer sstore1
           req <- clientMakeSyncRequest
           resp <- serverProcessSync req
           sstore2 <- serverGetStore
-          clientMergeSyncResponse resp
+          mergeFunc resp
           cstore2 <- clientGetStore
           lift $ do
             sstore2 `shouldBe` sstore1
@@ -55,26 +62,26 @@ runServerDB func = do
   pool <- asks testEnvServerPool
   liftIO $ runSqlPool func pool
 
-type CS = ClientStore ClientThingId ServerThingId ServerThing
+type CS = ClientStore ClientThingId ServerThingId Thing
 
-type SReq = SyncRequest ClientThingId ServerThingId ServerThing
+type SReq = SyncRequest ClientThingId ServerThingId Thing
 
-type SS = ServerStore ServerThingId ServerThing
+type SS = ServerStore ServerThingId Thing
 
-type SResp = SyncResponse ClientThingId ServerThingId ServerThing
+type SResp = SyncResponse ClientThingId ServerThingId Thing
 
-sync :: T (CS, SS, SS, CS)
-sync = do
+sync :: ItemMergeStrategy Thing -> T (CS, SS, SS, CS)
+sync strat = do
   cstore1 <- clientGetStore
   req <- clientMakeSyncRequest
   sstore1 <- serverGetStore
   resp <- serverProcessSync req
   sstore2 <- serverGetStore
-  clientMergeSyncResponse resp
+  clientMergeSyncResponse strat resp
   cstore2 <- clientGetStore
   pure (cstore1, sstore1, sstore2, cstore2)
 
-setupUnsyncedClient :: [ServerThing] -> T ()
+setupUnsyncedClient :: [Thing] -> T ()
 setupUnsyncedClient = runClientDB . setupUnsyncedClientQuery
 
 setupClient :: CS -> T ()
@@ -95,8 +102,8 @@ serverGetStore = runServerDB serverGetStoreQuery
 serverProcessSync :: SReq -> T SResp
 serverProcessSync = runServerDB . serverProcessSyncQuery
 
-clientMergeSyncResponse :: SResp -> T ()
-clientMergeSyncResponse = runClientDB . clientMergeSyncResponseQuery
+clientMergeSyncResponse :: ItemMergeStrategy Thing -> SResp -> T ()
+clientMergeSyncResponse strat = runClientDB . clientMergeSyncResponseQuery strat
 
 data TestEnv
   = TestEnv

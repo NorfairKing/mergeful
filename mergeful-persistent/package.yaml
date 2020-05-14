@@ -37,6 +37,7 @@ tests:
       - mergeful-persistent
       - monad-logger
       - mtl
+      - mtl
       - path
       - path-io
       - persistent
