@@ -33,9 +33,18 @@ spec = modifyMaxShrinks (const 0) $ twoClientsSpec $ do
         setupServer sstore
         sstore' <- serverGetStore
         liftIO $ sstore' `shouldBe` sstore
-  describe "mergeFromServerStrategy" $ mergeFunctionSpec mergeFromServerStrategy
-  describe "mergeFromClientStrategy" $ mergeFunctionSpec mergeFromClientStrategy
-  describe "mergeUsingCRDTStrategy" $ mergeFunctionSpec $ mergeUsingCRDTStrategy max
+  describe "mergeFromServerStrategy" $ do
+    let strat = mergeFromServerStrategy
+    mergeFunctionSpec strat
+    xdescribe "Does not hold" $ noDataLossSpec strat
+  describe "mergeFromClientStrategy" $ do
+    let strat = mergeFromClientStrategy
+    mergeFunctionSpec strat
+    noDataLossSpec strat
+  describe "mergeUsingCRDTStrategy" $ do
+    let strat = mergeUsingCRDTStrategy max
+    mergeFunctionSpec strat
+    noDataLossSpec strat
 
 mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 mergeFunctionSpec strat = do
@@ -208,7 +217,173 @@ mergeFunctionSpec strat = do
             -- Client A and Client B now have the same store
             cAstore2 `shouldBe` cBstore2
     describe "Multiple items" $ do
-      pure ()
+      it "successfully syncs additions accross to a second client" $ \te -> forAllValid $ \is ->
+        runTest te $ do
+          setupClient A $ initialClientStore {clientStoreAddedItems = is}
+          -- Client B is empty
+          setupClient B initialClientStore
+          -- The server is empty
+          setupServer initialServerStore
+          -- Client A makes sync request 1
+          req1 <- clientMakeSyncRequest A
+          -- The server processes sync request 1
+          resp1 <- serverProcessSync req1
+          sstore2 <- serverGetStore
+          let (rest, items) = mergeAddedItems is (syncResponseClientAdded resp1)
+          lift $ do
+            rest `shouldBe` M.empty
+            sstore2 `shouldBe` (ServerStore {serverStoreItems = items})
+          -- Client A merges the response
+          mergeFunc A resp1
+          cAstore2 <- clientGetStore A
+          lift $ cAstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
+          -- Client B makes sync request 2
+          req2 <- clientMakeSyncRequest B
+          -- The server processes sync request 2
+          resp2 <- serverProcessSync req2
+          sstore3 <- serverGetStore
+          lift $ do
+            resp2 `shouldBe` (emptySyncResponse {syncResponseServerAdded = items})
+            sstore3 `shouldBe` sstore2
+          -- Client B merges the response
+          mergeFunc B resp2
+          cBstore2 <- clientGetStore B
+          lift $ cBstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
+          -- Client A and Client B now have the same store
+          lift $ cAstore2 `shouldBe` cBstore2
+      it "succesfully syncs deletions across to a second client" $ \te -> forAllValid $ \items -> forAllValid $ \time1 ->
+        runTest te $ do
+          let syncedItems = M.map (\i -> Timed i time1) items
+              itemTimes = M.map (const time1) items
+              itemIds = M.keysSet items
+          setupClient A $ initialClientStore {clientStoreSyncedItems = syncedItems}
+          -- Client A has synced items
+          -- Client B had synced the same items, but has since deleted them.
+          setupClient B $ initialClientStore {clientStoreDeletedItems = itemTimes}
+          -- The server still has the undeleted item
+          setupServer $ ServerStore {serverStoreItems = syncedItems}
+          -- Client B makes sync request 1
+          req1 <- clientMakeSyncRequest B
+          -- The server processes sync request 1
+          resp1 <- serverProcessSync req1
+          sstore2 <- serverGetStore
+          lift $ do
+            resp1 `shouldBe` emptySyncResponse {syncResponseClientDeleted = itemIds}
+            sstore2 `shouldBe` initialServerStore
+          -- Client B merges the response
+          mergeFunc B resp1
+          cBstore2 <- clientGetStore B
+          lift $ cBstore2 `shouldBe` initialClientStore
+          -- Client A makes sync request 2
+          req2 <- clientMakeSyncRequest A
+          -- The server processes sync request 2
+          resp2 <- serverProcessSync req2
+          sstore3 <- serverGetStore
+          lift $ do
+            resp2 `shouldBe` emptySyncResponse {syncResponseServerDeleted = itemIds}
+            sstore3 `shouldBe` sstore2
+          -- Client A merges the response
+          mergeFunc A resp2
+          cAstore2 <- clientGetStore A
+          lift $ cAstore2 `shouldBe` initialClientStore
+          -- Client A and Client B now have the same store
+          lift $ cAstore2 `shouldBe` cBstore2
+      it "does not run into a conflict if two clients both try to sync a deletion" $ \te -> forAllValid $ \items -> forAllValid $ \time1 ->
+        runTest te $ do
+          setupClient A $
+            initialClientStore {clientStoreDeletedItems = M.map (const time1) items}
+          -- Both client a and client b delete their items.
+          setupClient B $
+            initialClientStore {clientStoreDeletedItems = M.map (const time1) items}
+          -- The server still has the undeleted items
+          setupServer $ ServerStore {serverStoreItems = M.map (\i -> Timed i time1) items}
+          -- Client A makes sync request 1
+          req1 <- clientMakeSyncRequest A
+          -- The server processes sync request 1
+          resp1 <- serverProcessSync req1
+          sstore2 <- serverGetStore
+          lift $ do
+            resp1 `shouldBe` (emptySyncResponse {syncResponseClientDeleted = M.keysSet items})
+            sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty}) -- TODO will probably need some sort of tombstoning.
+                  -- Client A merges the response
+          mergeFunc A resp1
+          cAstore2 <- clientGetStore A
+          lift $ cAstore2 `shouldBe` initialClientStore
+          -- Client B makes sync request 2
+          req2 <- clientMakeSyncRequest B
+          -- The server processes sync request 2
+          resp2 <- serverProcessSync req2
+          sstore3 <- serverGetStore
+          lift $ do
+            resp2 `shouldBe` (emptySyncResponse {syncResponseClientDeleted = M.keysSet items})
+            sstore3 `shouldBe` sstore2
+          -- Client B merges the response
+          mergeFunc B resp2
+          cBstore2 <- clientGetStore B
+          lift $ do
+            cBstore2 `shouldBe` initialClientStore
+            -- Client A and Client B now have the same store
+            cAstore2 `shouldBe` cBstore2
+
+noDataLossSpec ::
+  ItemMergeStrategy Thing ->
+  SpecWith TestEnv
+noDataLossSpec strat = do
+  let mergeFunc = clientMergeSyncResponse strat
+      syncFunc = sync strat
+  it "does not lose data after a conflict occurs" $ \te -> forAllValid $ \uuid -> forAllValid $ \time1 -> forAllValid $ \i1 -> forAllValid $ \i2 -> forAllValid $ \i3 ->
+    runTest te $ do
+      setupServer $ ServerStore {serverStoreItems = M.singleton uuid (Timed i1 time1)}
+      -- The server has an item
+      -- The first client has synced it, and modified it.
+      setupClient A $
+        initialClientStore
+          { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i2 time1)
+          }
+      -- The second client has synced it too, and modified it too.
+      setupClient B $
+        initialClientStore
+          { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)
+          }
+      -- Client A makes sync request 1
+      req1 <- clientMakeSyncRequest A
+      -- The server processes sync request 1
+      resp1 <- serverProcessSync req1
+      sstore2 <- serverGetStore
+      let time2 = incrementServerTime time1
+      -- The server updates the item accordingly
+      lift $ do
+        resp1
+          `shouldBe` (emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2})
+        sstore2
+          `shouldBe` (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
+      -- Client A merges the response
+      mergeFunc A resp1
+      cAstore2 <- clientGetStore A
+      lift $
+        cAstore2
+          `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
+      -- Client B makes sync request 2
+      req2 <- clientMakeSyncRequest B
+      -- The server processes sync request 2
+      resp2 <- serverProcessSync req2
+      sstore3 <- serverGetStore
+      -- The server reports a conflict and does not change its store
+      lift $ do
+        resp2
+          `shouldBe` (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed i2 time2)})
+        sstore3 `shouldBe` sstore2
+      -- Client B merges the response
+      clientMergeSyncResponse mergeFromClientStrategy B resp2
+      cBstore2 <- clientGetStore B
+      -- Client does not update, but keeps its conflict
+      -- Client A and Client B now *do not* have the same store
+      lift $
+        cBstore2
+          `shouldBe` ( initialClientStore
+                         { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)
+                         }
+                     )
 
 type T a = ReaderT TestEnv IO a
 
