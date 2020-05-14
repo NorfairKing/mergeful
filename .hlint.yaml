@@ -14,3 +14,7 @@
       - "Data.Mergeful.Collection.mergeSyncResponseIgnoreProblems"
 - ignore:
     name: "Use const"
+- ignore:
+    name: "Redundant if"
+    within:
+      - "TestUtils.ClientDB"

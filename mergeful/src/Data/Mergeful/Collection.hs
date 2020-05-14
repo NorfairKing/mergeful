@@ -41,7 +41,8 @@
 module Data.Mergeful.Collection
   ( -- * Client side
     ClientStore (..),
-    ClientId (..),
+    Timed (..),
+    ServerTime (..),
     initialClientStore,
 
     -- ** Querying the client store
@@ -81,6 +82,7 @@ module Data.Mergeful.Collection
     mergeSyncResponseCustom,
 
     -- *** Utility functions for implementing pure client-side merging
+    ClientId (..),
     mergeAddedItems,
     mergeSyncedButChangedItems,
     mergeDeletedItems,
@@ -97,9 +99,11 @@ module Data.Mergeful.Collection
     initialServerStore,
 
     -- ** Processing a sync request
+    processServerSync,
     emptySyncResponse,
     addToSyncResponse,
-    processServerSync,
+    initialServerTime,
+    incrementServerTime,
   )
 where
 
