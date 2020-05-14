@@ -197,7 +197,7 @@ spec = modifyMaxShrinks (min 0) $ do
     let strat = mergeFromClientStrategy
     helperFunctionsSpec strat
     mergeFunctionSpec @Int strat
-    noDataLossSpec @Int mergeSyncResponseFromClient
+    noDataLossSpec @Int strat
     xdescribe "does not hold" $ do
       emptyResponseSpec @Int mergeSyncResponseFromClient
       noDivergenceSpec @Int mergeFromClientStrategy
@@ -208,14 +208,14 @@ spec = modifyMaxShrinks (min 0) $ do
     noDivergenceSpec @Int mergeFromServerStrategy
     emptyResponseSpec @Int mergeSyncResponseFromServer
     noDifferentExceptForConflicts @Int mergeSyncResponseFromServer mergeSyncResponseFromClient
-    xdescribe "does not hold" $ noDataLossSpec @Int mergeSyncResponseFromServer
+    xdescribe "does not hold" $ noDataLossSpec @Int strat
   describe "Syncing with mergeSyncResponseUsingStrategy with a GCounter" $ do
     let strat = mergeUsingCRDTStrategy max
         mergeFunc :: (Ord ci, Ord si) => ClientStore ci si Int -> SyncResponse ci si Int -> ClientStore ci si Int
         mergeFunc = mergeSyncResponseUsingStrategy strat
     helperFunctionsSpec strat
     mergeFunctionSpec strat
-    noDataLossSpec mergeFunc
+    noDataLossSpec strat
     noDivergenceSpec strat
     emptyResponseSpec mergeFunc
     noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromClient
@@ -548,14 +548,10 @@ mergeFunctionSpec strat = do
 noDataLossSpec ::
   forall a.
   (Show a, Ord a, GenValid a) =>
-  ( forall ci si.
-    (Ord ci, Ord si) =>
-    ClientStore ci si a ->
-    SyncResponse ci si a ->
-    ClientStore ci si a
-  ) ->
+  ItemMergeStrategy a ->
   Spec
-noDataLossSpec mergeFunc =
+noDataLossSpec strat = do
+  let mergeFunc = mergeSyncResponseUsingStrategy strat
   it "does not lose data after a conflict occurs"
     $ forAllValid
     $ \uuid ->
@@ -588,7 +584,7 @@ noDataLossSpec mergeFunc =
                   sstore2
                     `shouldBe` (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
                 -- Client A merges the response
-                let cAstore2 = mergeFunc @ClientId @UUID cAstore1 resp1
+                let cAstore2 = mergeFunc cAstore1 resp1
                 lift $
                   cAstore2
                     `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
