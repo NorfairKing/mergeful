@@ -39,49 +39,64 @@
 -- This whole approach can break down if a server resets its server times
 -- or if a client syncs with two different servers using the same server times.
 module Data.Mergeful.Collection
-  ( initialClientStore,
+  ( -- * Client side
+    ClientStore (..),
+    ClientId (..),
+    initialClientStore,
+
+    -- ** Querying the client store
     clientStoreSize,
     clientStoreClientIdSet,
     clientStoreUndeletedSyncIdSet,
     clientStoreSyncIdSet,
     clientStoreItems,
+
+    -- ** Changing the client store
     addItemToClientStore,
     findFreeSpot,
     markItemDeletedInClientStore,
     changeItemInClientStore,
     deleteItemFromClientStore,
+
+    -- ** Maxing a sync request
+    SyncRequest (..),
     initialSyncRequest,
     makeSyncRequest,
-    mergeSyncResponseCustom,
-    ClientSyncProcessor (..),
+
+    -- ** Merging the response
+    SyncResponse (..),
+    ClientAddition (..),
+    ItemMergeStrategy (..),
+    mergeFromServerStrategy,
+    mergeFromClientStrategy,
+    mergeUsingCRDTStrategy,
     mergeSyncResponseFromServer,
     mergeSyncResponseFromClient,
     mergeSyncResponseUsingCRDT,
-
-    -- * Custom merging
-    ItemMergeStrategy (..),
     mergeSyncResponseUsingStrategy,
+    ClientSyncProcessor (..),
+    mergeSyncResponseCustom,
 
-    -- * Server side
-    initialServerStore,
-    processServerSync,
-
-    -- * Types, for reference
-    ClientStore (..),
-    SyncRequest (..),
-    ClientAddition (..),
-    SyncResponse (..),
-    emptySyncResponse,
-    ServerStore (..),
-    ClientId (..),
-
-    -- * Utility functions for implementing client-side merging
+    -- *** Utility functions for implementing pure client-side merging
     mergeAddedItems,
     mergeSyncedButChangedItems,
     mergeDeletedItems,
 
-    -- * Utility functions for implementing server-side responding
+    -- *** Utility functions for implementing custom client-side merging
+    mergeSyncedButChangedConflicts,
+    mergeClientDeletedConflicts,
+    mergeServerDeletedConflicts,
+
+    -- * Server side
+
+    -- ** The store
+    ServerStore (..),
+    initialServerStore,
+
+    -- ** Processing a sync request
+    emptySyncResponse,
     addToSyncResponse,
+    processServerSync,
   )
 where
 
@@ -703,12 +718,16 @@ mergeSyncResponseCustom ItemMergeStrategy {..} ClientSyncProcessor {..} SyncResp
   clientSyncProcessorSyncClientChanged syncResponseClientChanged
   clientSyncProcessorSyncClientAdded syncResponseClientAdded
 
+-- | Resolve change conflicts
 mergeSyncedButChangedConflicts ::
   forall si a.
   Ord si =>
   (a -> a -> ChangeConflictResolution a) ->
+  -- | The conflicting items on the client side
   Map si (Timed a) ->
+  -- | The conflicting items on the server side
   Map si (Timed a) ->
+  -- | Unresolved conflicts on the left, resolved conflicts on the right
   (Map si (Timed a), Map si (Timed a))
 mergeSyncedButChangedConflicts func clientItems =
   M.foldlWithKey go (M.empty, M.empty)
@@ -725,13 +744,25 @@ mergeSyncedButChangedConflicts func clientItems =
         TakeRemote -> (unresolved, M.insert key s resolved)
         Merged mi -> (unresolved, M.insert key (Timed mi st) resolved)
 
-mergeClientDeletedConflicts :: (a -> ClientDeletedConflictResolution) -> Map si (Timed a) -> Map si (Timed a)
+-- | Resolve client deleted conflicts
+mergeClientDeletedConflicts ::
+  (a -> ClientDeletedConflictResolution) ->
+  -- | The conflicting items on the server side
+  Map si (Timed a) ->
+  -- | A map of items that need to be updated on the client.
+  Map si (Timed a)
 mergeClientDeletedConflicts func = M.filter $ \(Timed si _) ->
   case func si of
     TakeRemoteChange -> True
     StayDeleted -> False
 
-mergeServerDeletedConflicts :: (a -> ServerDeletedConflictResolution) -> Map si (Timed a) -> Set si
+-- | Resolve server deleted conflicts
+mergeServerDeletedConflicts ::
+  (a -> ServerDeletedConflictResolution) ->
+  -- | The conflicting items on the client side
+  Map si (Timed a) ->
+  -- | The result is a map of items that need to be deleted on the client.
+  Set si
 mergeServerDeletedConflicts func m = M.keysSet $ flip M.filter m $ \(Timed si _) -> case func si of
   KeepLocalChange -> False
   Delete -> True
