@@ -12,6 +12,12 @@ module Data.Mergeful.Persistent
     clientMergeSyncResponseQuery,
     clientSyncProcessor,
 
+    -- ** Merging
+    ItemMergeStrategy (..),
+    mergeFromServerStrategy,
+    mergeFromClientStrategy,
+    mergeUsingCRDTStrategy,
+
     -- * Server side
     serverProcessSyncQuery,
 
@@ -42,6 +48,7 @@ deriving instance PersistField ServerTime
 
 deriving instance PersistFieldSql ServerTime
 
+-- | Make a sync request
 clientMakeSyncRequestQuery ::
   forall record sid a.
   ( Ord sid,
@@ -51,12 +58,19 @@ clientMakeSyncRequestQuery ::
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record
   ) =>
+  -- | The server id field
   EntityField record (Maybe sid) ->
+  -- | The server time field
   EntityField record (Maybe ServerTime) ->
+  -- | The changed flag
   EntityField record Bool ->
+  -- | The deleted flag
   EntityField record Bool ->
+  -- | How to read an unsynced client item
   (Entity record -> (Key record, a)) ->
+  -- | How to read a synced client item
   (Entity record -> (sid, Timed a)) ->
+  -- | How to read a deleted client item
   (Entity record -> (sid, ServerTime)) ->
   SqlPersistT IO (SyncRequest (Key record) sid a)
 clientMakeSyncRequestQuery serverIdField serverTimeField changedField deletedField unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing = do
@@ -102,14 +116,26 @@ clientMergeSyncResponseQuery ::
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record
   ) =>
+  -- | The server id field
   EntityField record (Maybe sid) ->
+  -- | The server time field
   EntityField record (Maybe ServerTime) ->
+  -- | The changed flag
   EntityField record Bool ->
+  -- | The deleted flag
   EntityField record Bool ->
+  -- | How to build a synced record from a server id and a timed item
   (sid -> Timed a -> record) ->
+  -- | How to read a synced record back into a server id and a timed item
   (Entity record -> (sid, Timed a)) ->
+  -- | How to update a row with new data
+  --
+  -- You only need to perform the updates that have anything to do with the data to sync.
+  -- The housekeeping updates are already taken care of.
   (a -> [Update record]) ->
+  -- | The merge strategy.
   ItemMergeStrategy a ->
+  -- | The sync response to merge
   SyncResponse (Key record) sid a ->
   SqlPersistT IO ()
 clientMergeSyncResponseQuery
@@ -140,12 +166,22 @@ clientSyncProcessor ::
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record
   ) =>
+  -- | The server id field
   EntityField record (Maybe sid) ->
+  -- | The server time field
   EntityField record (Maybe ServerTime) ->
+  -- | The changed flag
   EntityField record Bool ->
+  -- | The deleted flag
   EntityField record Bool ->
+  -- | How to build a synced record from a server id and a timed item
   (sid -> Timed a -> record) ->
+  -- | How to read a synced record back into a server id and a timed item
   (Entity record -> (sid, Timed a)) ->
+  -- | How to update a row with new data
+  --
+  -- You only need to perform the updates that have anything to do with the data to sync.
+  -- The housekeeping updates are already taken care of.
   (a -> [Update record]) ->
   ClientSyncProcessor (Key record) sid a (SqlPersistT IO)
 clientSyncProcessor
@@ -206,6 +242,9 @@ clientSyncProcessor
       clientSyncProcessorSyncServerDeleted s = forM_ (S.toList s) $ \sid ->
         deleteWhere [serverIdField ==. Just sid]
 
+-- | Set up a client store.
+--
+-- You shouldn't need this.
 setupClientQuery ::
   forall record sid a.
   ( PersistEntity record,
@@ -228,6 +267,9 @@ setupClientQuery makeUnsyncedClientThing makeSyncedClientThing makeSyncedButChan
     insert_ $ makeSyncedButChangedClientThing sid tt
   forM_ (M.toList clientStoreDeletedItems) $ \(sid, st) -> insert_ $ makeDeletedClientThing sid st
 
+-- | Get the client store.
+--
+-- You shouldn't need this.
 clientGetStoreQuery ::
   forall record sid a.
   ( Ord sid,
@@ -279,6 +321,7 @@ clientGetStoreQuery serverIdField serverTimeField changedField deletedField unma
         []
   pure ClientStore {..}
 
+-- | Process a sync request on the server side
 serverProcessSyncQuery ::
   forall ci record a.
   ( PersistEntity record,
@@ -287,9 +330,13 @@ serverProcessSyncQuery ::
     ToBackendKey SqlBackend record,
     Ord ci
   ) =>
+  -- | The id field
   EntityField record (Key record) ->
+  -- | How to save an item in the database
   (Timed a -> record) ->
+  -- | How to load an item from the database
   (record -> Timed a) ->
+  -- | A sync request
   SyncRequest ci (Key record) a ->
   SqlPersistT IO (SyncResponse ci (Key record) a)
 serverProcessSyncQuery idField makeFunc unmakeFunc sreq = do
@@ -325,6 +372,9 @@ serverProcessSyncQuery idField makeFunc unmakeFunc sreq = do
   setupServerQuery makeFunc store'
   pure resp
 
+-- | Set up the server store
+--
+-- You shouldn't need this.
 setupServerQuery ::
   forall record a.
   ( PersistEntity record,
@@ -337,6 +387,9 @@ setupServerQuery ::
 setupServerQuery func ServerStore {..} =
   forM_ (M.toList serverStoreItems) $ \(stid, tt) -> insertKey stid $ func tt
 
+-- | Get the server store
+--
+-- You shouldn't need this.
 serverGetStoreQuery ::
   ( PersistEntity record,
     PersistField (Key record),
