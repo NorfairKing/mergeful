@@ -702,16 +702,16 @@ mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 data ClientSyncProcessor ci si a (m :: * -> *)
   = ClientSyncProcessor
       { -- | Get the synced values with keys in the given set
-        clientSyncProcessorQuerySyncedButChangedValues :: Set si -> m (Map si (Timed a)),
-        clientSyncProcessorSyncClientAdded :: Map ci (ClientAddition si) -> m (),
-        clientSyncProcessorSyncClientChanged :: Map si ServerTime -> m (),
-        clientSyncProcessorSyncClientDeleted :: Set si -> m (),
+        clientSyncProcessorQuerySyncedButChangedValues :: !(Set si -> m (Map si (Timed a))),
+        clientSyncProcessorSyncClientAdded :: !(Map ci (ClientAddition si) -> m ()),
+        clientSyncProcessorSyncClientChanged :: !(Map si ServerTime -> m ()),
+        clientSyncProcessorSyncClientDeleted :: !(Set si -> m ()),
         -- | Store the items that were in a conflict but the conflict was resolved correctly.
         -- These items should be marked as changed.
-        clientSyncProcessorSyncMergedConflict :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncServerAdded :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncServerChanged :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncServerDeleted :: Set si -> m ()
+        clientSyncProcessorSyncMergedConflict :: !(Map si (Timed a) -> m ()),
+        clientSyncProcessorSyncServerAdded :: !(Map si (Timed a) -> m ()),
+        clientSyncProcessorSyncServerChanged :: !(Map si (Timed a) -> m ()),
+        clientSyncProcessorSyncServerDeleted :: !(Set si -> m ())
       }
   deriving (Generic)
 

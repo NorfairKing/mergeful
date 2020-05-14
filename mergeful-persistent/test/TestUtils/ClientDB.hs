@@ -12,9 +12,12 @@ module TestUtils.ClientDB where
 
 import Control.Monad
 import qualified Data.Map as M
+import Data.Map (Map)
 import Data.Maybe
 import Data.Mergeful
 import Data.Mergeful.Persistent ()
+import Data.Set (Set)
+import qualified Data.Set as S
 import Data.Validity
 import Data.Validity.Persist ()
 import Database.Persist.Sql
@@ -159,6 +162,38 @@ clientMergeSyncResponseQuery strat = mergeSyncResponseCustom strat clientSyncPro
 
 clientSyncProcessor :: ClientSyncProcessor ClientThingId ServerThingId Thing (SqlPersistT IO)
 clientSyncProcessor = ClientSyncProcessor {..}
+  where
+    clientSyncProcessorQuerySyncedButChangedValues :: Set ServerThingId -> SqlPersistT IO (Map ServerThingId (Timed Thing))
+    clientSyncProcessorQuerySyncedButChangedValues si = fmap (M.fromList . map unmakeSyncedClientThing . catMaybes) $ forM (S.toList si) $ \sid ->
+      selectFirst
+        [ ClientThingServerId ==. Just sid,
+          ClientThingServerTime !=. Nothing,
+          ClientThingChanged ==. True,
+          ClientThingDeleted ==. False
+        ]
+        []
+    clientSyncProcessorSyncClientAdded :: Map ClientThingId (ClientAddition ServerThingId) -> SqlPersistT IO ()
+    clientSyncProcessorSyncClientAdded m = forM_ (M.toList m) $ \(cid, ClientAddition {..}) ->
+      update cid [ClientThingServerId =. Just clientAdditionId, ClientThingServerTime =. Just clientAdditionServerTime]
+    clientSyncProcessorSyncClientChanged :: Map ServerThingId ServerTime -> SqlPersistT IO ()
+    clientSyncProcessorSyncClientChanged m = forM_ (M.toList m) $ \(sid, st) -> do
+      mCt <- fmap entityKey <$> getBy (ClientUniqueServerId $ Just sid)
+      forM_ mCt $ \cid -> update cid [ClientThingServerTime =. Just st, ClientThingChanged =. False]
+    clientSyncProcessorSyncClientDeleted :: Set ServerThingId -> SqlPersistT IO ()
+    clientSyncProcessorSyncClientDeleted s = forM_ (S.toList s) $ \sid -> deleteBy (ClientUniqueServerId $ Just sid)
+    clientSyncProcessorSyncMergedConflict :: Map ServerThingId (Timed Thing) -> SqlPersistT IO ()
+    clientSyncProcessorSyncMergedConflict m = forM_ (M.toList m) $ \(sid, Timed Thing {..} st) -> do
+      mCt <- fmap entityKey <$> getBy (ClientUniqueServerId $ Just sid)
+      forM_ mCt $ \cid -> update cid [ClientThingNumber =. thingNumber, ClientThingServerTime =. Just st, ClientThingChanged =. True]
+    clientSyncProcessorSyncServerAdded :: Map ServerThingId (Timed Thing) -> SqlPersistT IO ()
+    clientSyncProcessorSyncServerAdded m =
+      insertMany_ $ map (uncurry makeSyncedClientThing) (M.toList m)
+    clientSyncProcessorSyncServerChanged :: Map ServerThingId (Timed Thing) -> SqlPersistT IO ()
+    clientSyncProcessorSyncServerChanged m = forM_ (M.toList m) $ \(sid, Timed Thing {..} st) -> do
+      mCt <- fmap entityKey <$> getBy (ClientUniqueServerId $ Just sid)
+      forM_ mCt $ \cid -> update cid [ClientThingNumber =. thingNumber, ClientThingServerTime =. Just st, ClientThingChanged =. False]
+    clientSyncProcessorSyncServerDeleted :: Set ServerThingId -> SqlPersistT IO ()
+    clientSyncProcessorSyncServerDeleted s = forM_ (S.toList s) $ \sid -> deleteBy (ClientUniqueServerId $ Just sid)
 
 unmakeUnsyncedClientThing :: Entity ClientThing -> (ClientThingId, Thing)
 unmakeUnsyncedClientThing (Entity cid ClientThing {..}) = (cid, Thing {thingNumber = clientThingNumber})
