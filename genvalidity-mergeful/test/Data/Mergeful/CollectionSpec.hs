@@ -194,15 +194,17 @@ spec = modifyMaxShrinks (min 0) $ do
           evalD $ processServerSync @ClientId @UUID genD (store :: ServerStore UUID Int) request
       )
   describe "Syncing with mergeSyncResponseFromClient" $ do
-    helperFunctionsSpec mergeFromClientStrategy
-    mergeFunctionSpec @Int mergeSyncResponseFromClient
+    let strat = mergeFromClientStrategy
+    helperFunctionsSpec strat
+    mergeFunctionSpec @Int strat
     noDataLossSpec @Int mergeSyncResponseFromClient
     xdescribe "does not hold" $ do
       emptyResponseSpec @Int mergeSyncResponseFromClient
       noDivergenceSpec @Int mergeFromClientStrategy
   describe "Syncing with mergeSyncResponseFromServer" $ do
-    helperFunctionsSpec mergeFromServerStrategy
-    mergeFunctionSpec @Int mergeSyncResponseFromServer
+    let strat = mergeFromServerStrategy
+    helperFunctionsSpec strat
+    mergeFunctionSpec @Int strat
     noDivergenceSpec @Int mergeFromServerStrategy
     emptyResponseSpec @Int mergeSyncResponseFromServer
     noDifferentExceptForConflicts @Int mergeSyncResponseFromServer mergeSyncResponseFromClient
@@ -212,7 +214,7 @@ spec = modifyMaxShrinks (min 0) $ do
         mergeFunc :: (Ord ci, Ord si) => ClientStore ci si Int -> SyncResponse ci si Int -> ClientStore ci si Int
         mergeFunc = mergeSyncResponseUsingStrategy strat
     helperFunctionsSpec strat
-    mergeFunctionSpec mergeFunc
+    mergeFunctionSpec strat
     noDataLossSpec mergeFunc
     noDivergenceSpec strat
     emptyResponseSpec mergeFunc
@@ -234,14 +236,10 @@ helperFunctionsSpec ItemMergeStrategy {..} = do
 mergeFunctionSpec ::
   forall a.
   (Show a, Ord a, GenValid a) =>
-  ( forall ci si.
-    (Ord ci, Ord si) =>
-    ClientStore ci si a ->
-    SyncResponse ci si a ->
-    ClientStore ci si a
-  ) ->
+  ItemMergeStrategy a ->
   Spec
-mergeFunctionSpec mergeFunc = do
+mergeFunctionSpec strat = do
+  let mergeFunc = mergeSyncResponseUsingStrategy strat
   describe "Single client"
     $ describe "Multi-item"
     $ do
@@ -252,7 +250,7 @@ mergeFunctionSpec mergeFunc = do
             let cstore1 = initialClientStore
             let req = makeSyncRequest cstore1
             (resp, sstore2) <- processServerSync genD sstore1 req
-            let cstore2 = mergeFunc @ClientId @UUID cstore1 resp
+            let cstore2 = mergeFunc cstore1 resp
             lift $ do
               sstore2 `shouldBe` sstore1
               clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
@@ -264,7 +262,7 @@ mergeFunctionSpec mergeFunc = do
             let sstore1 = initialServerStore
             let req = makeSyncRequest cstore1
             (resp, sstore2) <- processServerSync genD sstore1 req
-            let cstore2 = mergeFunc @ClientId @UUID cstore1 resp
+            let cstore2 = mergeFunc cstore1 resp
             lift $ do
               sort (M.elems (M.map timedValue (clientStoreSyncedItems cstore2)))
                 `shouldBe` sort (M.elems items)
@@ -279,7 +277,7 @@ mergeFunctionSpec mergeFunc = do
               let cstore2 = mergeFunc cstore1 resp1
                   req2 = makeSyncRequest cstore2
               (resp2, sstore3) <- processServerSync genD sstore2 req2
-              let cstore3 = mergeFunc @ClientId @UUID cstore2 resp2
+              let cstore3 = mergeFunc cstore2 resp2
               lift $ do
                 cstore2 `shouldBe` cstore3
                 sstore2 `shouldBe` sstore3
@@ -365,7 +363,7 @@ mergeFunctionSpec mergeFunc = do
                         }
                     sstore3 `shouldBe` sstore2
                   -- Client A merges the response
-                  let cAstore2 = mergeFunc @ClientId @UUID cAstore1 resp2
+                  let cAstore2 = mergeFunc cAstore1 resp2
                   lift $
                     cAstore2
                       `shouldBe` initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed j time2)}
@@ -402,7 +400,7 @@ mergeFunctionSpec mergeFunc = do
                   resp2 `shouldBe` emptySyncResponse {syncResponseServerDeleted = S.singleton uuid}
                   sstore3 `shouldBe` sstore2
                 -- Client A merges the response
-                let cAstore2 = mergeFunc @ClientId @UUID cAstore1 resp2
+                let cAstore2 = mergeFunc cAstore1 resp2
                 lift $ cAstore2 `shouldBe` initialClientStore
                 -- Client A and Client B now have the same store
                 lift $ cAstore2 `shouldBe` cBstore2
@@ -437,7 +435,7 @@ mergeFunctionSpec mergeFunc = do
                     `shouldBe` (emptySyncResponse {syncResponseClientDeleted = S.singleton uuid})
                   sstore3 `shouldBe` sstore2
                 -- Client B merges the response
-                let cBstore2 = mergeFunc @ClientId @UUID cBstore1 resp2
+                let cBstore2 = mergeFunc cBstore1 resp2
                 lift $ do
                   cBstore2 `shouldBe` initialClientStore
                   -- Client A and Client B now have the same store
@@ -471,7 +469,7 @@ mergeFunctionSpec mergeFunc = do
               resp2 `shouldBe` (emptySyncResponse {syncResponseServerAdded = items})
               sstore3 `shouldBe` sstore2
             -- Client B merges the response
-            let cBstore2 = mergeFunc @ClientId @UUID cBstore1 resp2
+            let cBstore2 = mergeFunc cBstore1 resp2
             lift $ cBstore2 `shouldBe` (initialClientStore {clientStoreSyncedItems = items})
             -- Client A and Client B now have the same store
             lift $ cAstore2 `shouldBe` cBstore2
@@ -507,7 +505,7 @@ mergeFunctionSpec mergeFunc = do
                 resp2 `shouldBe` emptySyncResponse {syncResponseServerDeleted = itemIds}
                 sstore3 `shouldBe` sstore2
               -- Client A merges the response
-              let cAstore2 = mergeFunc @ClientId @UUID cAstore1 resp2
+              let cAstore2 = mergeFunc cAstore1 resp2
               lift $ cAstore2 `shouldBe` initialClientStore
               -- Client A and Client B now have the same store
               lift $ cAstore2 `shouldBe` cBstore2
@@ -541,7 +539,7 @@ mergeFunctionSpec mergeFunc = do
                 resp2 `shouldBe` (emptySyncResponse {syncResponseClientDeleted = M.keysSet items})
                 sstore3 `shouldBe` sstore2
               -- Client B merges the response
-              let cBstore2 = mergeFunc @ClientId @UUID cBstore1 resp2
+              let cBstore2 = mergeFunc cBstore1 resp2
               lift $ do
                 cBstore2 `shouldBe` initialClientStore
                 -- Client A and Client B now have the same store
