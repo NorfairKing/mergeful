@@ -178,10 +178,10 @@ setupServer :: SS -> T ()
 setupServer = runServerDB . setupServerThingQuery
 
 clientGetStore :: T CS
-clientGetStore = runClientDB clientGetStoreQuery
+clientGetStore = runClientDB clientGetStoreThingQuery
 
 clientMakeSyncRequest :: T SReq
-clientMakeSyncRequest = runClientDB clientMakeSyncRequestQuery
+clientMakeSyncRequest = runClientDB clientMakeSyncRequestThingQuery
 
 serverGetStore :: T SS
 serverGetStore = runServerDB serverGetStoreThingQuery

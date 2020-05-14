@@ -7,13 +7,17 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Data.Mergeful.Persistent
-  ( -- * Server side
+  ( -- * Client side
+    clientMakeSyncRequestQuery,
+
+    -- * Server side
     serverProcessSyncQuery,
 
     -- * Utils
 
     -- ** Client side
     setupClientQuery,
+    clientGetStoreQuery,
 
     -- ** Server side
     setupServerQuery,
@@ -56,6 +60,108 @@ setupClientQuery makeUnsyncedClientThing makeSyncedClientThing makeSyncedButChan
   forM_ (M.toList clientStoreSyncedButChangedItems) $ \(sid, tt) ->
     insert_ $ makeSyncedButChangedClientThing sid tt
   forM_ (M.toList clientStoreDeletedItems) $ \(sid, st) -> insert_ $ makeDeletedClientThing sid st
+
+clientGetStoreQuery ::
+  forall record sid a.
+  ( Ord sid,
+    PersistEntity record,
+    PersistField (Key record),
+    PersistField sid,
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record
+  ) =>
+  EntityField record (Maybe sid) ->
+  EntityField record (Maybe ServerTime) ->
+  EntityField record Bool ->
+  EntityField record Bool ->
+  (Entity record -> (Key record, a)) ->
+  (Entity record -> (sid, Timed a)) ->
+  (Entity record -> (sid, ServerTime)) ->
+  SqlPersistT IO (ClientStore (Key record) sid a)
+clientGetStoreQuery serverIdField serverTimeField changedField deletedField unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing = do
+  clientStoreAddedItems <-
+    M.fromList . map unmakeUnsyncedClientThing
+      <$> selectList
+        [ serverIdField ==. Nothing,
+          serverTimeField ==. Nothing
+        ]
+        []
+  clientStoreSyncedItems <-
+    M.fromList . map unmakeSyncedClientThing
+      <$> selectList
+        [ serverIdField !=. Nothing,
+          serverTimeField !=. Nothing,
+          changedField ==. False,
+          deletedField ==. False
+        ]
+        []
+  clientStoreSyncedButChangedItems <-
+    M.fromList . map unmakeSyncedClientThing
+      <$> selectList
+        [ serverIdField !=. Nothing,
+          serverTimeField !=. Nothing,
+          changedField ==. True,
+          deletedField ==. False
+        ]
+        []
+  clientStoreDeletedItems <-
+    M.fromList . map unmakeDeletedClientThing
+      <$> selectList
+        [ deletedField ==. True
+        ]
+        []
+  pure ClientStore {..}
+
+clientMakeSyncRequestQuery ::
+  forall record sid a.
+  ( Ord sid,
+    PersistEntity record,
+    PersistField (Key record),
+    PersistField sid,
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record
+  ) =>
+  EntityField record (Maybe sid) ->
+  EntityField record (Maybe ServerTime) ->
+  EntityField record Bool ->
+  EntityField record Bool ->
+  (Entity record -> (Key record, a)) ->
+  (Entity record -> (sid, Timed a)) ->
+  (Entity record -> (sid, ServerTime)) ->
+  SqlPersistT IO (SyncRequest (Key record) sid a)
+clientMakeSyncRequestQuery serverIdField serverTimeField changedField deletedField unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing = do
+  syncRequestNewItems <-
+    M.fromList . map unmakeUnsyncedClientThing
+      <$> selectList
+        [ serverIdField ==. Nothing,
+          serverTimeField ==. Nothing
+        ]
+        []
+  syncRequestKnownItems <-
+    M.fromList . map unmakeDeletedClientThing
+      <$> selectList
+        [ serverIdField !=. Nothing,
+          serverTimeField !=. Nothing,
+          changedField ==. False,
+          deletedField ==. False
+        ]
+        []
+  syncRequestKnownButChangedItems <-
+    M.fromList . map unmakeSyncedClientThing
+      <$> selectList
+        [ serverIdField !=. Nothing,
+          serverTimeField !=. Nothing,
+          changedField ==. True,
+          deletedField ==. False
+        ]
+        []
+  syncRequestDeletedItems <-
+    M.fromList . map unmakeDeletedClientThing
+      <$> selectList
+        [ deletedField ==. True
+        ]
+        []
+  pure SyncRequest {..}
 
 serverProcessSyncQuery ::
   forall ci record a.

@@ -80,75 +80,11 @@ setupUnsyncedClientQuery = mapM_ $ \Thing {..} ->
 setupClientThingQuery :: ClientStore ClientThingId ServerThingId Thing -> SqlPersistT IO ()
 setupClientThingQuery = setupClientQuery makeUnsyncedClientThing makeSyncedClientThing makeSyncedButChangedClientThing makeDeletedClientThing
 
-clientGetStoreQuery :: SqlPersistT IO (ClientStore ClientThingId ServerThingId Thing)
-clientGetStoreQuery = do
-  clientStoreAddedItems <-
-    M.fromList . map unmakeUnsyncedClientThing
-      <$> selectList
-        [ ClientThingServerId ==. Nothing,
-          ClientThingServerTime ==. Nothing
-        ]
-        []
-  clientStoreSyncedItems <-
-    M.fromList . map unmakeSyncedClientThing
-      <$> selectList
-        [ ClientThingServerId !=. Nothing,
-          ClientThingServerTime !=. Nothing,
-          ClientThingChanged ==. False,
-          ClientThingDeleted ==. False
-        ]
-        []
-  clientStoreSyncedButChangedItems <-
-    M.fromList . map unmakeSyncedClientThing
-      <$> selectList
-        [ ClientThingServerId !=. Nothing,
-          ClientThingServerTime !=. Nothing,
-          ClientThingChanged ==. True,
-          ClientThingDeleted ==. False
-        ]
-        []
-  clientStoreDeletedItems <-
-    M.fromList . map unmakeDeletedClientThing
-      <$> selectList
-        [ ClientThingDeleted ==. True
-        ]
-        []
-  pure ClientStore {..}
+clientGetStoreThingQuery :: SqlPersistT IO (ClientStore ClientThingId ServerThingId Thing)
+clientGetStoreThingQuery = clientGetStoreQuery ClientThingServerId ClientThingServerTime ClientThingChanged ClientThingDeleted unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing
 
-clientMakeSyncRequestQuery :: SqlPersistT IO (SyncRequest ClientThingId ServerThingId Thing)
-clientMakeSyncRequestQuery = do
-  syncRequestNewItems <-
-    M.fromList . map unmakeUnsyncedClientThing
-      <$> selectList
-        [ ClientThingServerId ==. Nothing,
-          ClientThingServerTime ==. Nothing
-        ]
-        []
-  syncRequestKnownItems <-
-    M.fromList . map unmakeDeletedClientThing
-      <$> selectList
-        [ ClientThingServerId !=. Nothing,
-          ClientThingServerTime !=. Nothing,
-          ClientThingChanged ==. False,
-          ClientThingDeleted ==. False
-        ]
-        []
-  syncRequestKnownButChangedItems <-
-    M.fromList . map unmakeSyncedClientThing
-      <$> selectList
-        [ ClientThingServerId !=. Nothing,
-          ClientThingServerTime !=. Nothing,
-          ClientThingChanged ==. True,
-          ClientThingDeleted ==. False
-        ]
-        []
-  syncRequestDeletedItems <-
-    M.fromList . map unmakeDeletedClientThing
-      <$> selectList
-        [ ClientThingDeleted ==. True
-        ]
-        []
-  pure SyncRequest {..}
+clientMakeSyncRequestThingQuery :: SqlPersistT IO (SyncRequest ClientThingId ServerThingId Thing)
+clientMakeSyncRequestThingQuery = clientMakeSyncRequestQuery ClientThingServerId ClientThingServerTime ClientThingChanged ClientThingDeleted unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing
 
 clientMergeSyncResponseQuery :: ItemMergeStrategy Thing -> SyncResponse ClientThingId ServerThingId Thing -> SqlPersistT IO ()
 clientMergeSyncResponseQuery strat = mergeSyncResponseCustom strat clientSyncProcessor

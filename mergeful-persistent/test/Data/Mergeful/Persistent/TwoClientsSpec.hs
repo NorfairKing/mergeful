@@ -486,10 +486,10 @@ setupServer :: SS -> T ()
 setupServer = runServerDB . setupServerThingQuery
 
 clientGetStore :: Client -> T CS
-clientGetStore client = runClientDB client clientGetStoreQuery
+clientGetStore client = runClientDB client clientGetStoreThingQuery
 
 clientMakeSyncRequest :: Client -> T SReq
-clientMakeSyncRequest client = runClientDB client clientMakeSyncRequestQuery
+clientMakeSyncRequest client = runClientDB client clientMakeSyncRequestThingQuery
 
 serverGetStore :: T SS
 serverGetStore = runServerDB serverGetStoreThingQuery
