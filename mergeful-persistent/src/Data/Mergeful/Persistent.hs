@@ -323,22 +323,23 @@ clientGetStoreQuery serverIdField serverTimeField changedField deletedField unma
 
 -- | Process a sync request on the server side
 serverProcessSyncQuery ::
-  forall ci record a.
+  forall cid sid record a.
   ( PersistEntity record,
     PersistField (Key record),
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
-    Ord ci
+    Ord cid,
+    sid ~ Key record
   ) =>
   -- | The id field
-  EntityField record (Key record) ->
+  EntityField record sid ->
   -- | How to save an item in the database
-  (Timed a -> record) ->
+  (Key record -> Timed a -> Entity record) ->
   -- | How to load an item from the database
-  (record -> Timed a) ->
+  (Entity record -> (sid, Timed a)) ->
   -- | A sync request
-  SyncRequest ci (Key record) a ->
-  SqlPersistT IO (SyncResponse ci (Key record) a)
+  SyncRequest cid sid a ->
+  SqlPersistT IO (SyncResponse cid sid a)
 serverProcessSyncQuery idField makeFunc unmakeFunc sreq = do
   -- FIXME this should be possible more efficiently.
   -- This should also be possible in a nicer way than juggling those ids
@@ -354,7 +355,7 @@ serverProcessSyncQuery idField makeFunc unmakeFunc sreq = do
         if i `S.member` takens
           then nextFreeKey takens (nextKey i) -- Keep looking
           else (i, S.insert i takens) -- this one is free, but will now be taken.
-      firstFreeId :: Key record
+      firstFreeId :: sid
       firstFreeId = fromMaybe (toSqlKey 0) lastThingId
       getNextFreeId = state $ \(i, takens) ->
         let (nf, takens') = nextFreeKey takens i
@@ -363,7 +364,7 @@ serverProcessSyncQuery idField makeFunc unmakeFunc sreq = do
         evalState
           ( processServerSync getNextFreeId store sreq ::
               State (Key record, Set (Key record))
-                ( SyncResponse ci (Key record) a,
+                ( SyncResponse cid (Key record) a,
                   ServerStore (Key record) a
                 )
           )
@@ -376,25 +377,28 @@ serverProcessSyncQuery idField makeFunc unmakeFunc sreq = do
 --
 -- You shouldn't need this.
 setupServerQuery ::
-  forall record a.
+  forall sid record a.
   ( PersistEntity record,
     PersistField (Key record),
     PersistEntityBackend record ~ SqlBackend
   ) =>
-  (Timed a -> record) ->
-  ServerStore (Key record) a ->
+  (sid -> Timed a -> Entity record) ->
+  ServerStore sid a ->
   SqlPersistT IO ()
 setupServerQuery func ServerStore {..} =
-  forM_ (M.toList serverStoreItems) $ \(stid, tt) -> insertKey stid $ func tt
+  forM_ (M.toList serverStoreItems) $ \(sid, tt) ->
+    let (Entity k r) = func sid tt
+     in insertKey k r
 
 -- | Get the server store
 --
 -- You shouldn't need this.
 serverGetStoreQuery ::
-  ( PersistEntity record,
-    PersistField (Key record),
+  ( Ord sid,
+    PersistEntity record,
+    PersistField sid,
     PersistEntityBackend record ~ SqlBackend
   ) =>
-  (record -> Timed a) ->
-  SqlPersistT IO (ServerStore (Key record) a)
-serverGetStoreQuery func = ServerStore . M.fromList . map (\(Entity stid st) -> (stid, func st)) <$> selectList [] []
+  (Entity record -> (sid, Timed a)) ->
+  SqlPersistT IO (ServerStore sid a)
+serverGetStoreQuery func = ServerStore . M.fromList . map func <$> selectList [] []
