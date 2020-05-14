@@ -15,7 +15,7 @@ import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe
 import Data.Mergeful
-import Data.Mergeful.Persistent ()
+import Data.Mergeful.Persistent
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Validity
@@ -77,15 +77,8 @@ setupUnsyncedClientQuery = mapM_ $ \Thing {..} ->
         clientThingChanged = False
       }
 
-setupClientQuery :: ClientStore ClientThingId ServerThingId Thing -> SqlPersistT IO ()
-setupClientQuery ClientStore {..} = do
-  forM_ (M.toList clientStoreAddedItems) $ \(cid, t) ->
-    insertKey cid $ makeUnsyncedClientThing t
-  forM_ (M.toList clientStoreSyncedItems) $ \(sid, tt) ->
-    insert_ $ makeSyncedClientThing sid tt
-  forM_ (M.toList clientStoreSyncedButChangedItems) $ \(sid, tt) ->
-    insert_ $ makeSyncedButChangedClientThing sid tt
-  forM_ (M.toList clientStoreDeletedItems) $ \(sid, st) -> insert_ $ makeDeletedClientThing sid st
+setupClientThingQuery :: ClientStore ClientThingId ServerThingId Thing -> SqlPersistT IO ()
+setupClientThingQuery = setupClientQuery makeUnsyncedClientThing makeSyncedClientThing makeSyncedButChangedClientThing makeDeletedClientThing
 
 clientGetStoreQuery :: SqlPersistT IO (ClientStore ClientThingId ServerThingId Thing)
 clientGetStoreQuery = do
@@ -194,6 +187,8 @@ clientSyncProcessor = ClientSyncProcessor {..}
       forM_ mCt $ \cid -> update cid [ClientThingNumber =. thingNumber, ClientThingServerTime =. Just st, ClientThingChanged =. False]
     clientSyncProcessorSyncServerDeleted :: Set ServerThingId -> SqlPersistT IO ()
     clientSyncProcessorSyncServerDeleted s = forM_ (S.toList s) $ \sid -> deleteBy (ClientUniqueServerId $ Just sid)
+
+--
 
 unmakeUnsyncedClientThing :: Entity ClientThing -> (ClientThingId, Thing)
 unmakeUnsyncedClientThing (Entity cid ClientThing {..}) = (cid, Thing {thingNumber = clientThingNumber})

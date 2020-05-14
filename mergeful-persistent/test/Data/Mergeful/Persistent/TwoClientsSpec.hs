@@ -480,7 +480,7 @@ type SS = ServerStore ServerThingId Thing
 type SResp = SyncResponse ClientThingId ServerThingId Thing
 
 setupClient :: Client -> CS -> T ()
-setupClient client = runClientDB client . setupClientQuery
+setupClient client = runClientDB client . setupClientThingQuery
 
 setupServer :: SS -> T ()
 setupServer = runServerDB . setupServerThingQuery

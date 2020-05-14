@@ -172,7 +172,7 @@ sync strat = do
   pure (cstore1, sstore1, sstore2, cstore2)
 
 setupClient :: CS -> T ()
-setupClient = runClientDB . setupClientQuery
+setupClient = runClientDB . setupClientThingQuery
 
 setupServer :: SS -> T ()
 setupServer = runServerDB . setupServerThingQuery

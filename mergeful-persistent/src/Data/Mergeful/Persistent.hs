@@ -10,7 +10,12 @@ module Data.Mergeful.Persistent
   ( -- * Server side
     serverProcessSyncQuery,
 
-    -- ** Utils
+    -- * Utils
+
+    -- ** Client side
+    setupClientQuery,
+
+    -- ** Server side
     setupServerQuery,
     serverGetStoreQuery,
   )
@@ -29,6 +34,28 @@ import Database.Persist.Sql
 deriving instance PersistField ServerTime
 
 deriving instance PersistFieldSql ServerTime
+
+setupClientQuery ::
+  forall record sid a.
+  ( PersistEntity record,
+    PersistField (Key record),
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record
+  ) =>
+  (a -> record) ->
+  (sid -> Timed a -> record) ->
+  (sid -> Timed a -> record) ->
+  (sid -> ServerTime -> record) ->
+  ClientStore (Key record) sid a ->
+  SqlPersistT IO ()
+setupClientQuery makeUnsyncedClientThing makeSyncedClientThing makeSyncedButChangedClientThing makeDeletedClientThing ClientStore {..} = do
+  forM_ (M.toList clientStoreAddedItems) $ \(cid, t) ->
+    insertKey cid $ makeUnsyncedClientThing t
+  forM_ (M.toList clientStoreSyncedItems) $ \(sid, tt) ->
+    insert_ $ makeSyncedClientThing sid tt
+  forM_ (M.toList clientStoreSyncedButChangedItems) $ \(sid, tt) ->
+    insert_ $ makeSyncedButChangedClientThing sid tt
+  forM_ (M.toList clientStoreDeletedItems) $ \(sid, st) -> insert_ $ makeDeletedClientThing sid st
 
 serverProcessSyncQuery ::
   forall ci record a.
