@@ -36,15 +36,18 @@ spec = modifyMaxShrinks (const 0) $ twoClientsSpec $ do
   describe "mergeFromServerStrategy" $ do
     let strat = mergeFromServerStrategy
     mergeFunctionSpec strat
+    noDivergenceSpec strat
     xdescribe "Does not hold" $ noDataLossSpec strat
   describe "mergeFromClientStrategy" $ do
     let strat = mergeFromClientStrategy
     mergeFunctionSpec strat
     noDataLossSpec strat
+    xdescribe "Does not hold" $ noDivergenceSpec strat
   describe "mergeUsingCRDTStrategy" $ do
     let strat = mergeUsingCRDTStrategy max
     mergeFunctionSpec strat
     noDataLossSpec strat
+    noDivergenceSpec strat
 
 mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 mergeFunctionSpec strat = do
@@ -330,7 +333,6 @@ noDataLossSpec ::
   SpecWith TestEnv
 noDataLossSpec strat = do
   let mergeFunc = clientMergeSyncResponse strat
-      syncFunc = sync strat
   it "does not lose data after a conflict occurs" $ \te -> forAllValid $ \uuid -> forAllValid $ \time1 -> forAllValid $ \i1 -> forAllValid $ \i2 -> forAllValid $ \i3 ->
     runTest te $ do
       setupServer $ ServerStore {serverStoreItems = M.singleton uuid (Timed i1 time1)}
@@ -384,6 +386,77 @@ noDataLossSpec strat = do
                          { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)
                          }
                      )
+
+noDivergenceSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
+noDivergenceSpec strat = do
+  let mergeFunc = clientMergeSyncResponse strat
+  it "does not diverge after a conflict occurs" $ \te ->
+    forAllValid $ \uuid -> forAllValid $ \time1 -> forAllValid $ \iS -> forAllValid $ \iA ->
+      forAllValid $ \iB ->
+        runTest te $ do
+          setupServer $ ServerStore {serverStoreItems = M.singleton uuid (Timed iS time1)}
+          -- The server has an item
+          -- The first client has synced it, and modified it.
+          setupClient A $
+            initialClientStore
+              { clientStoreSyncedButChangedItems = M.singleton uuid (Timed iA time1)
+              }
+          -- The second client has synced it too, and modified it too.
+          setupClient B $
+            initialClientStore
+              { clientStoreSyncedButChangedItems = M.singleton uuid (Timed iB time1)
+              }
+          -- Client A makes sync request 1
+          req1 <- clientMakeSyncRequest A
+          -- The server processes sync request 1
+          resp1 <- serverProcessSync req1
+          sstore2 <- serverGetStore
+          let time2 = incrementServerTime time1
+          -- The server updates the item accordingly
+          lift $ do
+            resp1
+              `shouldBe` (emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2})
+            sstore2
+              `shouldBe` (ServerStore {serverStoreItems = M.singleton uuid (Timed iA time2)})
+          -- Client A merges the response
+          mergeFunc A resp1
+          cAstore2 <- clientGetStore A
+          -- Client A has the item from the server because there was no conflict.
+          lift $
+            cAstore2
+              `shouldBe` initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed iA time2)}
+          -- Client B makes sync request 2
+          req2 <- clientMakeSyncRequest B
+          -- The server processes sync request 2
+          resp2 <- serverProcessSync req2
+          sstore3 <- serverGetStore
+          -- The server reports a conflict and does not change its store
+          lift $ do
+            resp2
+              `shouldBe` (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed iA time2)})
+            sstore3 `shouldBe` sstore2
+          -- Client B merges the response
+          mergeFunc B resp2
+          cBstore2 <- clientGetStore B
+          lift $ do
+            let expected = case itemMergeStrategyMergeChangeConflict strat iB iA of
+                  KeepLocal -> initialClientStore {clientStoreSyncedButChangedItems = M.singleton uuid (Timed iB time1)}
+                  TakeRemote -> initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed iA time2)}
+                  Merged im -> initialClientStore {clientStoreSyncedButChangedItems = M.singleton uuid (Timed im time2)}
+            cBstore2
+              `shouldBe` expected
+          -- In case of a previous merge, the synced item will still be changed, so we need to sync again with B and then with A
+          req3 <- clientMakeSyncRequest B
+          resp3 <- serverProcessSync req3
+          sstore4 <- serverGetStore
+          mergeFunc B resp3
+          cBstore3 <- clientGetStore B
+          req4 <- clientMakeSyncRequest A
+          resp4 <- serverProcessSync req4
+          mergeFunc A resp4
+          cAstore3 <- clientGetStore A
+          lift $
+            cBstore3 `shouldBe` cAstore3
 
 type T a = ReaderT TestEnv IO a
 
