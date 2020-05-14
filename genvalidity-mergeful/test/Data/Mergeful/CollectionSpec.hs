@@ -199,21 +199,22 @@ spec = modifyMaxShrinks (min 0) $ do
     noDataLossSpec @Int mergeSyncResponseFromClient
     xdescribe "does not hold" $ do
       emptyResponseSpec @Int mergeSyncResponseFromClient
-      noDivergenceSpec @Int mergeSyncResponseFromClient
+      noDivergenceSpec @Int mergeFromClientStrategy
   describe "Syncing with mergeSyncResponseFromServer" $ do
     helperFunctionsSpec mergeFromServerStrategy
     mergeFunctionSpec @Int mergeSyncResponseFromServer
-    noDivergenceSpec @Int mergeSyncResponseFromServer
+    noDivergenceSpec @Int mergeFromServerStrategy
     emptyResponseSpec @Int mergeSyncResponseFromServer
     noDifferentExceptForConflicts @Int mergeSyncResponseFromServer mergeSyncResponseFromClient
     xdescribe "does not hold" $ noDataLossSpec @Int mergeSyncResponseFromServer
   describe "Syncing with mergeSyncResponseUsingStrategy with a GCounter" $ do
-    let mergeFunc :: (Ord ci, Ord si) => ClientStore ci si Int -> SyncResponse ci si Int -> ClientStore ci si Int
-        mergeFunc = mergeSyncResponseUsingCRDT max
-    helperFunctionsSpec $ mergeUsingCRDTStrategy max
+    let strat = mergeUsingCRDTStrategy max
+        mergeFunc :: (Ord ci, Ord si) => ClientStore ci si Int -> SyncResponse ci si Int -> ClientStore ci si Int
+        mergeFunc = mergeSyncResponseUsingStrategy strat
+    helperFunctionsSpec strat
     mergeFunctionSpec mergeFunc
     noDataLossSpec mergeFunc
-    noDivergenceSpec mergeFunc
+    noDivergenceSpec strat
     emptyResponseSpec mergeFunc
     noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromClient
     noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromServer
@@ -616,33 +617,29 @@ noDataLossSpec mergeFunc =
 noDivergenceSpec ::
   forall a.
   (Show a, Ord a, GenValid a) =>
-  ( forall ci si.
-    (Ord ci, Ord si) =>
-    ClientStore ci si a ->
-    SyncResponse ci si a ->
-    ClientStore ci si a
-  ) ->
+  ItemMergeStrategy a ->
   Spec
-noDivergenceSpec mergeFunc =
+noDivergenceSpec strat = do
+  let mergeFunc = mergeSyncResponseUsingStrategy strat
   it "does not diverge after a conflict occurs"
     $ forAllValid
     $ \uuid ->
       forAllValid $ \time1 ->
-        forAllValid $ \i1 ->
-          forAllValid $ \i2 ->
-            forAllValid $ \i3 ->
+        forAllValid $ \iS ->
+          forAllValid $ \iA ->
+            forAllValid $ \iB ->
               evalDM $ do
-                let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed i1 time1)}
+                let sstore1 = ServerStore {serverStoreItems = M.singleton uuid (Timed iS time1)}
                 -- The server has an item
                 -- The first client has synced it, and modified it.
                 let cAstore1 =
                       initialClientStore
-                        { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i2 time1)
+                        { clientStoreSyncedButChangedItems = M.singleton uuid (Timed iA time1)
                         }
                 -- The second client has synced it too, and modified it too.
                 let cBstore1 =
                       initialClientStore
-                        { clientStoreSyncedButChangedItems = M.singleton uuid (Timed i3 time1)
+                        { clientStoreSyncedButChangedItems = M.singleton uuid (Timed iB time1)
                         }
                 -- Client A makes sync request 1
                 let req1 = makeSyncRequest @ClientId @UUID cAstore1
@@ -654,14 +651,13 @@ noDivergenceSpec mergeFunc =
                   resp1
                     `shouldBe` (emptySyncResponse {syncResponseClientChanged = M.singleton uuid time2})
                   sstore2
-                    `shouldBe` (ServerStore {serverStoreItems = M.singleton uuid (Timed i2 time2)})
+                    `shouldBe` (ServerStore {serverStoreItems = M.singleton uuid (Timed iA time2)})
                 -- Client A merges the response
                 let cAstore2 = mergeFunc cAstore1 resp1
-                -- This doesn't hold for CRDT merges because we can't guarantee that i2 and i3 are modified according to the CRDT
-                -- Indeed, if the CRDT is a GCounter, then if i2 is lower than i1 then the server will keep i1 but otherwise it will take i2
-                -- lift $
-                --   cAstore2
-                --     `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
+                -- Client A has the item from the server because there was no conflict.
+                lift $
+                  cAstore2
+                    `shouldBe` initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed iA time2)}
                 -- Client B makes sync request 2
                 let req2 = makeSyncRequest cBstore1
                 -- The server processes sync request 2
@@ -669,30 +665,26 @@ noDivergenceSpec mergeFunc =
                 -- The server reports a conflict and does not change its store
                 lift $ do
                   resp2
-                    `shouldBe` (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed i2 time2)})
+                    `shouldBe` (emptySyncResponse {syncResponseConflicts = M.singleton uuid (Timed iA time2)})
                   sstore3 `shouldBe` sstore2
                 -- Client B merges the response
                 let cBstore2 = mergeFunc cBstore1 resp2
-                -- lift $ do
-                -- This doesn't hold for CRDT merges because we can't guarantee that i2 and i3 are modified according to the CRDT
-                -- Indeed, if the CRDT is a GCounter, then if i3 is lower than what the server kept in the previous merge then the server will keep what it had but otherwise it will take i3
-                -- cBstore2
-                --   `shouldBe` (initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed i2 time2)})
-                -- This also doesn't hold in a CRDT case because the change that B might have had going through will not have arrived at A yet.
-                -- We need to sync again first.
-                -- Client A and Client B now have the same store
-                -- cBstore2 `shouldBe` cAstore2
-
-                -- Client A makes sync request 3
-                let req3 = makeSyncRequest cAstore2
-                -- The server processes sync request 3
-                (resp3, sstore4) <- processServerSync genD sstore3 req3
-                -- Client A merges sync response 3
-                let cAstore3 = mergeFunc cAstore2 resp3
-                -- Now Client A and Client B should have the same store
                 lift $ do
-                  sstore4 `shouldBe` sstore3
-                  cAstore3 `shouldBe` cBstore2
+                  let expected = case itemMergeStrategyMergeChangeConflict strat iB iA of
+                        KeepLocal -> initialClientStore {clientStoreSyncedButChangedItems = M.singleton uuid (Timed iB time1)}
+                        TakeRemote -> initialClientStore {clientStoreSyncedItems = M.singleton uuid (Timed iA time2)}
+                        Merged im -> initialClientStore {clientStoreSyncedButChangedItems = M.singleton uuid (Timed im time2)}
+                  cBstore2
+                    `shouldBe` expected
+                -- In case of a previous merge, the synced item will still be changed, so we need to sync again with B and then with A
+                let req3 = makeSyncRequest cBstore2
+                (resp3, sstore4) <- processServerSync genD sstore3 req3
+                let cBstore3 = mergeFunc cBstore2 resp3
+                let req4 = makeSyncRequest cAstore2
+                (resp4, _) <- processServerSync genD sstore4 req4
+                let cAstore3 = mergeFunc cAstore2 resp4
+                lift $
+                  cBstore3 `shouldBe` cAstore3
 
 emptyResponseSpec ::
   forall a.

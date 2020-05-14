@@ -67,6 +67,9 @@ module Data.Mergeful.Collection
     SyncResponse (..),
     ClientAddition (..),
     ItemMergeStrategy (..),
+    ChangeConflictResolution (..),
+    ClientDeletedConflictResolution (..),
+    ServerDeletedConflictResolution (..),
     mergeFromServerStrategy,
     mergeFromClientStrategy,
     mergeUsingCRDTStrategy,
@@ -627,6 +630,12 @@ pureClientSyncProcessor =
               let leftovers = mergeDeletedItems (clientStoreDeletedItems cs) s
                in cs {clientStoreDeletedItems = leftovers}
           ),
+      clientSyncProcessorSyncMergedConflict = \resolved ->
+        modify
+          ( \cs ->
+              let newSyncedButChanged = M.union resolved (clientStoreSyncedButChangedItems cs)
+               in cs {clientStoreSyncedButChangedItems = newSyncedButChanged, clientStoreSyncedItems = clientStoreSyncedItems cs `M.difference` newSyncedButChanged}
+          ),
       clientSyncProcessorSyncServerAdded = \m ->
         modify (\cs -> cs {clientStoreSyncedItems = m `M.union` clientStoreSyncedItems cs}),
       clientSyncProcessorSyncServerChanged = \m ->
@@ -693,6 +702,9 @@ data ClientSyncProcessor ci si a (m :: * -> *)
         clientSyncProcessorSyncClientAdded :: Map ci (ClientAddition si) -> m (),
         clientSyncProcessorSyncClientChanged :: Map si ServerTime -> m (),
         clientSyncProcessorSyncClientDeleted :: Set si -> m (),
+        -- | Store the items that were in a conflict but the conflict was resolved correctly.
+        -- These items should be marked as changed.
+        clientSyncProcessorSyncMergedConflict :: Map si (Timed a) -> m (),
         clientSyncProcessorSyncServerAdded :: Map si (Timed a) -> m (),
         clientSyncProcessorSyncServerChanged :: Map si (Timed a) -> m (),
         clientSyncProcessorSyncServerDeleted :: Set si -> m ()
@@ -706,7 +718,7 @@ mergeSyncResponseCustom ItemMergeStrategy {..} ClientSyncProcessor {..} SyncResp
   -- Every change conflict, unless the client item is kept, needs to be updated
   -- The unresolved conflicts don't need to be updated.
   clientChangeConflicts <- clientSyncProcessorQuerySyncedButChangedValues $ M.keysSet syncResponseConflicts
-  let (_, resolvedChangeConflicts) = mergeSyncedButChangedConflicts itemMergeStrategyMergeChangeConflict clientChangeConflicts syncResponseConflicts
+  let (_, mergedChangeConflicts, resolvedChangeConflicts) = mergeSyncedButChangedConflicts itemMergeStrategyMergeChangeConflict clientChangeConflicts syncResponseConflicts
   -- Every served deleted conflict needs to be deleted, if the sync processor says so
   clientServerDeletedConflicts <- clientSyncProcessorQuerySyncedButChangedValues syncResponseConflictsServerDeleted
   let resolvedServerDeletedConflicts = mergeServerDeletedConflicts itemMergeStrategyMergeServerDeletedConflict clientServerDeletedConflicts
@@ -714,6 +726,7 @@ mergeSyncResponseCustom ItemMergeStrategy {..} ClientSyncProcessor {..} SyncResp
   clientSyncProcessorSyncServerAdded $ M.union syncResponseServerAdded resolvedClientDeletedConflicts
   clientSyncProcessorSyncServerChanged $ M.union syncResponseServerChanged resolvedChangeConflicts
   clientSyncProcessorSyncServerDeleted $ S.union syncResponseServerDeleted resolvedServerDeletedConflicts
+  clientSyncProcessorSyncMergedConflict mergedChangeConflicts
   clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
   clientSyncProcessorSyncClientChanged syncResponseClientChanged
   clientSyncProcessorSyncClientAdded syncResponseClientAdded
@@ -727,22 +740,29 @@ mergeSyncedButChangedConflicts ::
   Map si (Timed a) ->
   -- | The conflicting items on the server side
   Map si (Timed a) ->
-  -- | Unresolved conflicts on the left, resolved conflicts on the right
-  (Map si (Timed a), Map si (Timed a))
+  -- | Unresolved conflicts on the left, merged conflicts in the middle, resolved conflicts on the right
+  --
+  -- * The unresolved conflicts should remain as-is
+  -- * The merged conflicts should be updated and marked as changed
+  -- * The resolved conflicts should be updated and marked as unchanged
+  (Map si (Timed a), Map si (Timed a), Map si (Timed a))
 mergeSyncedButChangedConflicts func clientItems =
-  M.foldlWithKey go (M.empty, M.empty)
+  M.foldlWithKey go (M.empty, M.empty, M.empty)
   where
     go ::
-      (Map si (Timed a), Map si (Timed a)) ->
+      (Map si (Timed a), Map si (Timed a), Map si (Timed a)) ->
       si ->
       Timed a ->
-      (Map si (Timed a), Map si (Timed a))
-    go tup@(unresolved, resolved) key s@(Timed si st) = case M.lookup key clientItems of
+      (Map si (Timed a), Map si (Timed a), Map si (Timed a))
+    go tup@(unresolved, merged, resolved) key s@(Timed si st) = case M.lookup key clientItems of
       Nothing -> tup -- TODO not even sure what this would mean. Should not happen I guess. Just throw it away
       Just c@(Timed ci _) -> case func ci si of
-        KeepLocal -> (M.insert key c unresolved, resolved)
-        TakeRemote -> (unresolved, M.insert key s resolved)
-        Merged mi -> (unresolved, M.insert key (Timed mi st) resolved)
+        KeepLocal ->
+          (M.insert key c unresolved, merged, resolved)
+        Merged mi ->
+          (unresolved, M.insert key (Timed mi st) merged, M.insert key s resolved)
+        TakeRemote ->
+          (unresolved, merged, M.insert key s resolved)
 
 -- | Resolve client deleted conflicts
 mergeClientDeletedConflicts ::
