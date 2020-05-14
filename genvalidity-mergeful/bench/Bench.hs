@@ -9,7 +9,6 @@ import Data.GenValidity.Criterion
 import Data.GenValidity.Mergeful ()
 import Data.Mergeful.Collection
 import Data.Mergeful.Item
-import Data.Mergeful.Timed
 import Data.Mergeful.Value
 
 main :: IO ()

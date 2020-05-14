@@ -18,3 +18,5 @@
     name: "Redundant if"
     within:
       - "TestUtils.ClientDB"
+- ignore:
+    name: "Redundant do"

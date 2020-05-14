@@ -11,11 +11,10 @@ module TestUtils.ServerDB where
 
 import Control.Monad.State
 import Data.GenValidity
-import Data.GenValidity.Mergeful
+import Data.GenValidity.Mergeful ()
 import qualified Data.Map as M
-import Data.Maybe
 import Data.Mergeful
-import Data.Mergeful.Persistent
+import Data.Mergeful.Persistent ()
 import Database.Persist.Sql
 import Database.Persist.TH
 import GHC.Generics (Generic)

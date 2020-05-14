@@ -209,7 +209,7 @@ makeUnsyncedClientThing Thing {..} =
     }
 
 unmakeSyncedClientThing :: Entity ClientThing -> (ServerThingId, Timed Thing)
-unmakeSyncedClientThing (Entity cid ClientThing {..}) =
+unmakeSyncedClientThing (Entity _ ClientThing {..}) =
   ( fromJust clientThingServerId,
     Timed
       { timedValue = Thing {thingNumber = clientThingNumber},
@@ -238,7 +238,7 @@ makeSyncedButChangedClientThing sid (Timed Thing {..} st) =
     }
 
 unmakeDeletedClientThing :: Entity ClientThing -> (ServerThingId, ServerTime)
-unmakeDeletedClientThing (Entity cid ClientThing {..}) =
+unmakeDeletedClientThing (Entity _ ClientThing {..}) =
   (fromJust clientThingServerId, fromJust clientThingServerTime)
 
 makeDeletedClientThing :: ServerThingId -> ServerTime -> ClientThing

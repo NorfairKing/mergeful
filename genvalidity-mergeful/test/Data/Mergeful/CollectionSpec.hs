@@ -18,7 +18,6 @@ import Data.GenValidity.UUID ()
 import Data.List
 import qualified Data.Map as M
 import Data.Mergeful
-import Data.Mergeful.Timed
 import qualified Data.Set as S
 import Data.UUID
 import GHC.Generics (Generic)
