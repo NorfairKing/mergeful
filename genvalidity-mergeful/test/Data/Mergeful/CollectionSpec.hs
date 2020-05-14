@@ -123,12 +123,6 @@ spec = modifyMaxShrinks (min 0) $ do
   describe "mergeSyncedButChangedItems"
     $ it "produces valid results"
     $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
-  describe "mergeAddedItems"
-    $ it "produces valid results"
-    $ producesValidsOnValids2 (mergeAddedItems @ClientId @Int @Int)
-  describe "mergeSyncedButChangedItems"
-    $ it "produces valid results"
-    $ producesValidsOnValids2 (mergeSyncedButChangedItems @Int @Int)
   describe "mergeDeletedItems"
     $ it "produces valid results"
     $ producesValidsOnValids2 (mergeDeletedItems @Int @Int)
@@ -200,12 +194,14 @@ spec = modifyMaxShrinks (min 0) $ do
           evalD $ processServerSync @ClientId @UUID genD (store :: ServerStore UUID Int) request
       )
   describe "Syncing with mergeSyncResponseFromClient" $ do
+    helperFunctionsSpec mergeFromClientStrategy
     mergeFunctionSpec @Int mergeSyncResponseFromClient
     noDataLossSpec @Int mergeSyncResponseFromClient
     xdescribe "does not hold" $ do
       emptyResponseSpec @Int mergeSyncResponseFromClient
       noDivergenceSpec @Int mergeSyncResponseFromClient
   describe "Syncing with mergeSyncResponseFromServer" $ do
+    helperFunctionsSpec mergeFromServerStrategy
     mergeFunctionSpec @Int mergeSyncResponseFromServer
     noDivergenceSpec @Int mergeSyncResponseFromServer
     emptyResponseSpec @Int mergeSyncResponseFromServer
@@ -214,12 +210,25 @@ spec = modifyMaxShrinks (min 0) $ do
   describe "Syncing with mergeSyncResponseUsingStrategy with a GCounter" $ do
     let mergeFunc :: (Ord ci, Ord si) => ClientStore ci si Int -> SyncResponse ci si Int -> ClientStore ci si Int
         mergeFunc = mergeSyncResponseUsingCRDT max
+    helperFunctionsSpec $ mergeUsingCRDTStrategy max
     mergeFunctionSpec mergeFunc
     noDataLossSpec mergeFunc
     noDivergenceSpec mergeFunc
     emptyResponseSpec mergeFunc
     noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromClient
     noDifferentExceptForConflicts mergeFunc mergeSyncResponseFromServer
+
+helperFunctionsSpec :: ItemMergeStrategy Int -> Spec
+helperFunctionsSpec ItemMergeStrategy {..} = do
+  describe "mergeSyncedButChangedConflicts"
+    $ it "produces valid results"
+    $ producesValidsOnValids2 (mergeSyncedButChangedConflicts @Int @Int itemMergeStrategyMergeChangeConflict)
+  describe "mergeClientDeletedConflicts"
+    $ it "produces valid results"
+    $ producesValidsOnValids (mergeClientDeletedConflicts @Int @Int itemMergeStrategyMergeClientDeletedConflict)
+  describe "mergeServerDeletedConflicts"
+    $ it "produces valid results"
+    $ producesValidsOnValids (mergeServerDeletedConflicts @Int @Int itemMergeStrategyMergeServerDeletedConflict)
 
 mergeFunctionSpec ::
   forall a.
