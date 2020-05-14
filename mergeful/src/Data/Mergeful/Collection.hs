@@ -100,6 +100,8 @@ module Data.Mergeful.Collection
 
     -- ** Processing a sync request
     processServerSync,
+    ServerSyncProcessor (..),
+    processServerSyncCustom,
     emptySyncResponse,
     addToSyncResponse,
     initialServerTime,
@@ -799,6 +801,26 @@ data Identifier ci si
 instance (Validity ci, Validity si) => Validity (Identifier ci si)
 
 instance (NFData ci, NFData si) => NFData (Identifier ci si)
+
+data ServerSyncProcessor ci si a m
+  = ServerSyncProcessor
+      { serverSyncProcessorRead :: m (Map si (Timed a)),
+        serverSyncProcessorAddItem :: a -> m si,
+        serverSyncProcessorChangeItem :: si -> ServerTime -> a -> m (),
+        serverSyncProcessorDeleteItem :: si -> m ()
+      }
+  deriving (Generic)
+
+processServerSyncCustom ::
+  forall ci si a m.
+  ( Ord ci,
+    Ord si,
+    Monad m
+  ) =>
+  ServerSyncProcessor ci si a m ->
+  SyncRequest ci si a ->
+  m (SyncResponse ci si a)
+processServerSyncCustom proc@ServerSyncProcessor {..} sr = undefined
 
 -- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
 processServerSync ::
