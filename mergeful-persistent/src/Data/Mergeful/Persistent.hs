@@ -9,6 +9,8 @@
 module Data.Mergeful.Persistent
   ( -- * Client side
     clientMakeSyncRequestQuery,
+    clientMergeSyncResponseQuery,
+    clientSyncProcessor,
 
     -- * Server side
     serverProcessSyncQuery,
@@ -28,6 +30,7 @@ where
 import Control.Monad
 import Control.Monad.State
 import qualified Data.Map as M
+import Data.Map (Map)
 import Data.Maybe
 import Data.Mergeful
 import Data.Set (Set)
@@ -38,6 +41,170 @@ import Database.Persist.Sql
 deriving instance PersistField ServerTime
 
 deriving instance PersistFieldSql ServerTime
+
+clientMakeSyncRequestQuery ::
+  forall record sid a.
+  ( Ord sid,
+    PersistEntity record,
+    PersistField (Key record),
+    PersistField sid,
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record
+  ) =>
+  EntityField record (Maybe sid) ->
+  EntityField record (Maybe ServerTime) ->
+  EntityField record Bool ->
+  EntityField record Bool ->
+  (Entity record -> (Key record, a)) ->
+  (Entity record -> (sid, Timed a)) ->
+  (Entity record -> (sid, ServerTime)) ->
+  SqlPersistT IO (SyncRequest (Key record) sid a)
+clientMakeSyncRequestQuery serverIdField serverTimeField changedField deletedField unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing = do
+  syncRequestNewItems <-
+    M.fromList . map unmakeUnsyncedClientThing
+      <$> selectList
+        [ serverIdField ==. Nothing,
+          serverTimeField ==. Nothing
+        ]
+        []
+  syncRequestKnownItems <-
+    M.fromList . map unmakeDeletedClientThing
+      <$> selectList
+        [ serverIdField !=. Nothing,
+          serverTimeField !=. Nothing,
+          changedField ==. False,
+          deletedField ==. False
+        ]
+        []
+  syncRequestKnownButChangedItems <-
+    M.fromList . map unmakeSyncedClientThing
+      <$> selectList
+        [ serverIdField !=. Nothing,
+          serverTimeField !=. Nothing,
+          changedField ==. True,
+          deletedField ==. False
+        ]
+        []
+  syncRequestDeletedItems <-
+    M.fromList . map unmakeDeletedClientThing
+      <$> selectList
+        [ deletedField ==. True
+        ]
+        []
+  pure SyncRequest {..}
+
+clientMergeSyncResponseQuery ::
+  forall record sid a.
+  ( Ord sid,
+    PersistEntity record,
+    PersistField (Key record),
+    PersistField sid,
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record
+  ) =>
+  EntityField record (Maybe sid) ->
+  EntityField record (Maybe ServerTime) ->
+  EntityField record Bool ->
+  EntityField record Bool ->
+  (sid -> Timed a -> record) ->
+  (Entity record -> (sid, Timed a)) ->
+  (a -> [Update record]) ->
+  ItemMergeStrategy a ->
+  SyncResponse (Key record) sid a ->
+  SqlPersistT IO ()
+clientMergeSyncResponseQuery
+  serverIdField
+  serverTimeField
+  changedField
+  deletedField
+  makeSyncedClientThing
+  unmakeSyncedClientThing
+  recordUpdates
+  strat =
+    mergeSyncResponseCustom strat $
+      clientSyncProcessor
+        serverIdField
+        serverTimeField
+        changedField
+        deletedField
+        makeSyncedClientThing
+        unmakeSyncedClientThing
+        recordUpdates
+
+clientSyncProcessor ::
+  forall record sid a.
+  ( Ord sid,
+    PersistEntity record,
+    PersistField (Key record),
+    PersistField sid,
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record
+  ) =>
+  EntityField record (Maybe sid) ->
+  EntityField record (Maybe ServerTime) ->
+  EntityField record Bool ->
+  EntityField record Bool ->
+  (sid -> Timed a -> record) ->
+  (Entity record -> (sid, Timed a)) ->
+  (a -> [Update record]) ->
+  ClientSyncProcessor (Key record) sid a (SqlPersistT IO)
+clientSyncProcessor
+  serverIdField
+  serverTimeField
+  changedField
+  deletedField
+  makeSyncedClientThing
+  unmakeSyncedClientThing
+  recordUpdates = ClientSyncProcessor {..}
+    where
+      clientSyncProcessorQuerySyncedButChangedValues :: Set sid -> SqlPersistT IO (Map sid (Timed a))
+      clientSyncProcessorQuerySyncedButChangedValues si = fmap (M.fromList . map unmakeSyncedClientThing . catMaybes) $ forM (S.toList si) $ \sid ->
+        selectFirst
+          [ serverIdField ==. Just sid,
+            serverTimeField !=. Nothing,
+            changedField ==. True,
+            deletedField ==. False
+          ]
+          []
+      clientSyncProcessorSyncClientAdded :: Map (Key record) (ClientAddition sid) -> SqlPersistT IO ()
+      clientSyncProcessorSyncClientAdded m = forM_ (M.toList m) $ \(cid, ClientAddition {..}) ->
+        update
+          cid
+          [ serverIdField =. Just clientAdditionId,
+            serverTimeField =. Just clientAdditionServerTime
+          ]
+      clientSyncProcessorSyncClientChanged :: Map sid ServerTime -> SqlPersistT IO ()
+      clientSyncProcessorSyncClientChanged m = forM_ (M.toList m) $ \(sid, st) ->
+        updateWhere
+          [serverIdField ==. Just sid]
+          [ serverTimeField =. Just st,
+            changedField =. False
+          ]
+      clientSyncProcessorSyncClientDeleted :: Set sid -> SqlPersistT IO ()
+      clientSyncProcessorSyncClientDeleted s = forM_ (S.toList s) $ \sid ->
+        deleteWhere [serverIdField ==. Just sid]
+      clientSyncProcessorSyncMergedConflict :: Map sid (Timed a) -> SqlPersistT IO ()
+      clientSyncProcessorSyncMergedConflict m = forM_ (M.toList m) $ \(sid, Timed a st) ->
+        updateWhere
+          [serverIdField ==. Just sid]
+          $ [ serverTimeField =. Just st,
+              changedField =. True
+            ]
+            ++ recordUpdates a
+      clientSyncProcessorSyncServerAdded :: Map sid (Timed a) -> SqlPersistT IO ()
+      clientSyncProcessorSyncServerAdded m =
+        insertMany_ $ map (uncurry makeSyncedClientThing) (M.toList m)
+      clientSyncProcessorSyncServerChanged :: Map sid (Timed a) -> SqlPersistT IO ()
+      clientSyncProcessorSyncServerChanged m = forM_ (M.toList m) $ \(sid, Timed a st) -> do
+        updateWhere
+          [serverIdField ==. Just sid]
+          $ [ serverTimeField =. Just st,
+              changedField =. False
+            ]
+            ++ recordUpdates a
+      clientSyncProcessorSyncServerDeleted :: Set sid -> SqlPersistT IO ()
+      clientSyncProcessorSyncServerDeleted s = forM_ (S.toList s) $ \sid ->
+        deleteWhere [serverIdField ==. Just sid]
 
 setupClientQuery ::
   forall record sid a.
@@ -111,57 +278,6 @@ clientGetStoreQuery serverIdField serverTimeField changedField deletedField unma
         ]
         []
   pure ClientStore {..}
-
-clientMakeSyncRequestQuery ::
-  forall record sid a.
-  ( Ord sid,
-    PersistEntity record,
-    PersistField (Key record),
-    PersistField sid,
-    PersistEntityBackend record ~ SqlBackend,
-    ToBackendKey SqlBackend record
-  ) =>
-  EntityField record (Maybe sid) ->
-  EntityField record (Maybe ServerTime) ->
-  EntityField record Bool ->
-  EntityField record Bool ->
-  (Entity record -> (Key record, a)) ->
-  (Entity record -> (sid, Timed a)) ->
-  (Entity record -> (sid, ServerTime)) ->
-  SqlPersistT IO (SyncRequest (Key record) sid a)
-clientMakeSyncRequestQuery serverIdField serverTimeField changedField deletedField unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing = do
-  syncRequestNewItems <-
-    M.fromList . map unmakeUnsyncedClientThing
-      <$> selectList
-        [ serverIdField ==. Nothing,
-          serverTimeField ==. Nothing
-        ]
-        []
-  syncRequestKnownItems <-
-    M.fromList . map unmakeDeletedClientThing
-      <$> selectList
-        [ serverIdField !=. Nothing,
-          serverTimeField !=. Nothing,
-          changedField ==. False,
-          deletedField ==. False
-        ]
-        []
-  syncRequestKnownButChangedItems <-
-    M.fromList . map unmakeSyncedClientThing
-      <$> selectList
-        [ serverIdField !=. Nothing,
-          serverTimeField !=. Nothing,
-          changedField ==. True,
-          deletedField ==. False
-        ]
-        []
-  syncRequestDeletedItems <-
-    M.fromList . map unmakeDeletedClientThing
-      <$> selectList
-        [ deletedField ==. True
-        ]
-        []
-  pure SyncRequest {..}
 
 serverProcessSyncQuery ::
   forall ci record a.

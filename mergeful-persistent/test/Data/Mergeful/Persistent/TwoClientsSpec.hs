@@ -498,7 +498,7 @@ serverProcessSync :: SReq -> T SResp
 serverProcessSync = runServerDB . serverProcessSyncThingQuery
 
 clientMergeSyncResponse :: ItemMergeStrategy Thing -> Client -> SResp -> T ()
-clientMergeSyncResponse strat client = runClientDB client . clientMergeSyncResponseQuery strat
+clientMergeSyncResponse strat client = runClientDB client . clientMergeSyncResponseThingQuery strat
 
 data Client = A | B
   deriving (Show, Eq)
