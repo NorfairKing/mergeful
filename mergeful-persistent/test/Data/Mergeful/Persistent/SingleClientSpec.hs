@@ -7,17 +7,13 @@ module Data.Mergeful.Persistent.SingleClientSpec
   )
 where
 
-import Control.Monad
 import Control.Monad.Reader
-import Data.GenValidity.Mergeful
 import Data.List
 import qualified Data.Map as M
 import Data.Mergeful
-import Data.Mergeful.Persistent
 import Database.Persist.Sql
 import Test.Hspec
 import Test.Hspec.QuickCheck
-import Test.QuickCheck
 import Test.Validity
 import TestUtils
 
@@ -141,8 +137,8 @@ sync strat = do
   cstore2 <- clientGetStore
   pure (cstore1, sstore1, sstore2, cstore2)
 
-setupUnsyncedClient :: [Thing] -> T ()
-setupUnsyncedClient = runClientDB . setupUnsyncedClientQuery
+-- setupUnsyncedClient :: [Thing] -> T ()
+-- setupUnsyncedClient = runClientDB . setupUnsyncedClientQuery
 
 setupClient :: CS -> T ()
 setupClient = runClientDB . setupClientQuery
