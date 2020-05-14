@@ -15,6 +15,7 @@ library:
   - containers
   - mergeful
   - microlens
+  - mtl
   - persistent
 
 tests:

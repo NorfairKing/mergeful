@@ -175,7 +175,7 @@ setupClient :: CS -> T ()
 setupClient = runClientDB . setupClientQuery
 
 setupServer :: SS -> T ()
-setupServer = runServerDB . setupServerQuery
+setupServer = runServerDB . setupServerThingQuery
 
 clientGetStore :: T CS
 clientGetStore = runClientDB clientGetStoreQuery
@@ -184,10 +184,10 @@ clientMakeSyncRequest :: T SReq
 clientMakeSyncRequest = runClientDB clientMakeSyncRequestQuery
 
 serverGetStore :: T SS
-serverGetStore = runServerDB serverGetStoreQuery
+serverGetStore = runServerDB serverGetStoreThingQuery
 
 serverProcessSync :: SReq -> T SResp
-serverProcessSync = runServerDB . serverProcessSyncQuery
+serverProcessSync = runServerDB . serverProcessSyncThingQuery
 
 clientMergeSyncResponse :: ItemMergeStrategy Thing -> SResp -> T ()
 clientMergeSyncResponse strat = runClientDB . clientMergeSyncResponseQuery strat
