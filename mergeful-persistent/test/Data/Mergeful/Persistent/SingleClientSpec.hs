@@ -32,8 +32,41 @@ spec = modifyMaxShrinks (const 0) $ oneClientSpec $ do
 mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 mergeFunctionSpec strat = do
   let mergeFunc = clientMergeSyncResponse strat
+      syncFunc = sync strat
   describe "Single Client" $ do
     describe "Single item" $ do
+      it "succesfully downloads an item from the server for an empty client" $ \te ->
+        forAllValid $ \uuid ->
+          forAllValid $ \tst -> runTest te $ do
+            let sstore1 = ServerStore $ M.singleton uuid tst
+            setupClient initialClientStore
+            setupServer sstore1
+            req <- clientMakeSyncRequest
+            resp <- serverProcessSync req
+            sstore2 <- serverGetStore
+            mergeFunc resp
+            cstore2 <- clientGetStore
+            lift $ do
+              sstore2 `shouldBe` sstore1
+              clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
+      it "succesfully uploads an item to the server for an empty server" $ \te ->
+        forAllValid $ \cid ->
+          forAllValid $ \t ->
+            runTest te $ do
+              let cstore1 = initialClientStore {clientStoreAddedItems = M.singleton cid t}
+              let sstore1 = initialServerStore
+              setupClient cstore1
+              setupServer sstore1
+              req <- clientMakeSyncRequest
+              resp <- serverProcessSync req
+              sstore2 <- serverGetStore
+              mergeFunc resp
+              cstore2 <- clientGetStore
+              lift $ do
+                sort (M.elems (M.map timedValue (clientStoreSyncedItems cstore2)))
+                  `shouldBe` sort [t]
+                clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
+    describe "Multiple items" $ do
       it "succesfully downloads an item from the server for an empty client" $ \te ->
         forAllValid $ \sstore1 -> runTest te $ do
           setupClient initialClientStore
@@ -46,6 +79,33 @@ mergeFunctionSpec strat = do
           lift $ do
             sstore2 `shouldBe` sstore1
             clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
+      it "succesfully uploads everything to the server for an empty server" $ \te ->
+        forAllValid $ \items ->
+          runTest te $ do
+            let cstore1 = initialClientStore {clientStoreAddedItems = items}
+            let sstore1 = initialServerStore
+            setupClient cstore1
+            setupServer sstore1
+            req <- clientMakeSyncRequest
+            resp <- serverProcessSync req
+            sstore2 <- serverGetStore
+            mergeFunc resp
+            cstore2 <- clientGetStore
+            lift $ do
+              sort (M.elems (M.map timedValue (clientStoreSyncedItems cstore2)))
+                `shouldBe` sort (M.elems items)
+              clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
+      it "is idempotent with one client" $ \te ->
+        forAllValid $ \cstore1 ->
+          forAllValid $ \sstore1 ->
+            runTest te $ do
+              setupClient cstore1
+              setupServer sstore1
+              (_, _, sstore2, cstore2) <- syncFunc
+              (_, _, sstore3, cstore3) <- syncFunc
+              lift $ do
+                cstore2 `shouldBe` cstore3
+                sstore2 `shouldBe` sstore3
 
 type T a = ReaderT TestEnv IO a
 
