@@ -545,33 +545,6 @@ makeSyncRequest ClientStore {..} =
       syncRequestDeletedItems = clientStoreDeletedItems
     }
 
-data ClientSyncProcessor ci si a (m :: * -> *)
-  = ClientSyncProcessor
-      { clientSyncProcessorSyncClientAdded :: Map ci (ClientAddition si) -> m (),
-        clientSyncProcessorSyncClientChanged :: Map si ServerTime -> m (),
-        clientSyncProcessorSyncClientDeleted :: Set si -> m (),
-        clientSyncProcessorSyncServerAdded :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncServerChanged :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncServerDeleted :: Set si -> m (),
-        clientSyncProcessorSyncChangeConflict :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncConflictsClientDeleted :: Map si (Timed a) -> m (),
-        clientSyncProcessorSyncConflictsServerDeleted :: Set si -> m ()
-      }
-  deriving (Generic)
-
-mergeSyncResponseCustom :: Monad m => ClientSyncProcessor ci si a m -> SyncResponse ci si a -> m ()
-mergeSyncResponseCustom ClientSyncProcessor {..} SyncResponse {..} = do
-  -- The order here matters!
-  clientSyncProcessorSyncChangeConflict syncResponseConflicts
-  clientSyncProcessorSyncConflictsClientDeleted syncResponseConflictsClientDeleted
-  clientSyncProcessorSyncConflictsServerDeleted syncResponseConflictsServerDeleted
-  clientSyncProcessorSyncServerAdded syncResponseServerAdded
-  clientSyncProcessorSyncServerChanged syncResponseServerChanged
-  clientSyncProcessorSyncServerDeleted syncResponseServerDeleted
-  clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
-  clientSyncProcessorSyncClientChanged syncResponseClientChanged
-  clientSyncProcessorSyncClientAdded syncResponseClientAdded
-
 -- | Merge a 'SyncResponse' into the current 'ClientStore' by taking whatever the server gave the client in case of conflict.
 --
 -- Pro: Clients will converge on the same value.
@@ -664,6 +637,37 @@ mergeSyncResponseUsingStrategy ItemMergeStrategy {..} cs SyncResponse {..} =
           clientStoreSyncedItems = synced
         }
 
+data ClientSyncProcessor ci si a (m :: * -> *)
+  = ClientSyncProcessor
+      { -- | Get the synced values with keys in the given set
+        clientSyncProcessorQuerySyncedValues :: Set si -> m (Map si (Timed a)),
+        clientSyncProcessorSyncClientAdded :: Map ci (ClientAddition si) -> m (),
+        clientSyncProcessorSyncClientChanged :: Map si ServerTime -> m (),
+        clientSyncProcessorSyncClientDeleted :: Set si -> m (),
+        clientSyncProcessorSyncServerAdded :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncServerChanged :: Map si (Timed a) -> m (),
+        clientSyncProcessorSyncServerDeleted :: Set si -> m ()
+      }
+  deriving (Generic)
+
+mergeSyncResponseCustom :: (Ord si, Monad m) => ItemMergeStrategy a -> ClientSyncProcessor ci si a m -> SyncResponse ci si a -> m ()
+mergeSyncResponseCustom ItemMergeStrategy {..} ClientSyncProcessor {..} SyncResponse {..} = do
+  -- Every client deleted conflict needs to be added, if the sync processor says so
+  let resolvedClientDeletedConflicts = mergeClientDeletedConflicts itemMergeStrategyMergeClientDeletedConflict syncResponseConflictsClientDeleted
+  -- Every change conflict, unless the client item is kept, needs to be updated
+  -- The unresolved conflicts don't need to be updated.
+  clientChangeConflicts <- clientSyncProcessorQuerySyncedValues $ M.keysSet syncResponseConflicts
+  let (_, resolvedChangeConflicts) = mergeSyncedButChangedConflicts itemMergeStrategyMergeChangeConflict clientChangeConflicts syncResponseConflicts
+  -- Every served deleted conflict needs to be deleted, if the sync processor says so
+  clientServerDeletedConflicts <- clientSyncProcessorQuerySyncedValues syncResponseConflictsServerDeleted
+  let resolvedServerDeletedConflicts = mergeServerDeletedConflicts itemMergeStrategyMergeServerDeletedConflict clientServerDeletedConflicts
+  clientSyncProcessorSyncClientAdded syncResponseClientAdded
+  clientSyncProcessorSyncClientChanged syncResponseClientChanged
+  clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
+  clientSyncProcessorSyncServerAdded $ M.union syncResponseServerAdded resolvedClientDeletedConflicts
+  clientSyncProcessorSyncServerChanged $ M.union syncResponseServerChanged resolvedChangeConflicts
+  clientSyncProcessorSyncServerDeleted $ S.union syncResponseServerDeleted resolvedServerDeletedConflicts
+
 -- | Merge the local added items with the ones that the server has acknowledged as added.
 mergeAddedItems ::
   forall ci si a.
@@ -725,6 +729,17 @@ mergeSyncedButChangedConflicts func clientItems =
         KeepLocal -> (M.insert key c unresolved, resolved)
         TakeRemote -> (unresolved, M.insert key s resolved)
         Merged mi -> (unresolved, M.insert key (Timed mi st) resolved)
+
+mergeClientDeletedConflicts :: (a -> ClientDeletedConflictResolution) -> Map si (Timed a) -> Map si (Timed a)
+mergeClientDeletedConflicts func = M.filter $ \(Timed si _) ->
+  case func si of
+    TakeRemoteChange -> True
+    StayDeleted -> False
+
+mergeServerDeletedConflicts :: (a -> ServerDeletedConflictResolution) -> Map si (Timed a) -> Set si
+mergeServerDeletedConflicts func m = M.keysSet $ flip M.filter m $ \(Timed si _) -> case func si of
+  KeepLocalChange -> False
+  Delete -> True
 
 data Identifier ci si
   = OnlyServer si
