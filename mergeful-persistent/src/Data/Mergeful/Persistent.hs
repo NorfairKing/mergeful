@@ -10,6 +10,8 @@ module Data.Mergeful.Persistent
   ( -- * Client side
     clientMakeSyncRequestQuery,
     clientMergeSyncResponseQuery,
+
+    -- ** Raw processors
     clientSyncProcessor,
 
     -- ** Merging
@@ -21,6 +23,10 @@ module Data.Mergeful.Persistent
     -- * Server side
     serverProcessSyncQuery,
     serverProcessSyncWithCustomIdQuery,
+
+    -- ** Raw processors
+    serverSyncProcessor,
+    serverSyncWithCustomIdProcessor,
 
     -- * Utils
 
@@ -35,6 +41,7 @@ module Data.Mergeful.Persistent
 where
 
 import Control.Monad
+import Control.Monad.IO.Class
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe
@@ -115,13 +122,14 @@ clientMakeSyncRequestQuery
     pure SyncRequest {..}
 
 clientMergeSyncResponseQuery ::
-  forall record sid a.
+  forall record sid a m.
   ( Ord sid,
     PersistEntity record,
     PersistField (Key record),
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
-    ToBackendKey SqlBackend record
+    ToBackendKey SqlBackend record,
+    MonadIO m
   ) =>
   -- | The server id field
   EntityField record (Maybe sid) ->
@@ -144,7 +152,7 @@ clientMergeSyncResponseQuery ::
   ItemMergeStrategy a ->
   -- | The sync response to merge
   SyncResponse (Key record) sid a ->
-  SqlPersistT IO ()
+  SqlPersistT m ()
 clientMergeSyncResponseQuery
   serverIdField
   serverTimeField
@@ -165,13 +173,14 @@ clientMergeSyncResponseQuery
         recordUpdates
 
 clientSyncProcessor ::
-  forall record sid a.
+  forall record sid a m.
   ( Ord sid,
     PersistEntity record,
     PersistField (Key record),
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
-    ToBackendKey SqlBackend record
+    ToBackendKey SqlBackend record,
+    MonadIO m
   ) =>
   -- | The server id field
   EntityField record (Maybe sid) ->
@@ -190,7 +199,7 @@ clientSyncProcessor ::
   -- You only need to perform the updates that have anything to do with the data to sync.
   -- The housekeeping updates are already taken care of.
   (a -> [Update record]) ->
-  ClientSyncProcessor (Key record) sid a (SqlPersistT IO)
+  ClientSyncProcessor (Key record) sid a (SqlPersistT m)
 clientSyncProcessor
   serverIdField
   serverTimeField
@@ -200,7 +209,7 @@ clientSyncProcessor
   unmakeSyncedClientThing
   recordUpdates = ClientSyncProcessor {..}
     where
-      clientSyncProcessorQuerySyncedButChangedValues :: Set sid -> SqlPersistT IO (Map sid (Timed a))
+      clientSyncProcessorQuerySyncedButChangedValues :: Set sid -> SqlPersistT m (Map sid (Timed a))
       clientSyncProcessorQuerySyncedButChangedValues si = fmap (M.fromList . map unmakeSyncedClientThing . catMaybes) $ forM (S.toList si) $ \sid ->
         selectFirst
           [ serverIdField ==. Just sid,
@@ -209,24 +218,24 @@ clientSyncProcessor
             deletedField ==. False
           ]
           []
-      clientSyncProcessorSyncClientAdded :: Map (Key record) (ClientAddition sid) -> SqlPersistT IO ()
+      clientSyncProcessorSyncClientAdded :: Map (Key record) (ClientAddition sid) -> SqlPersistT m ()
       clientSyncProcessorSyncClientAdded m = forM_ (M.toList m) $ \(cid, ClientAddition {..}) ->
         update
           cid
           [ serverIdField =. Just clientAdditionId,
             serverTimeField =. Just clientAdditionServerTime
           ]
-      clientSyncProcessorSyncClientChanged :: Map sid ServerTime -> SqlPersistT IO ()
+      clientSyncProcessorSyncClientChanged :: Map sid ServerTime -> SqlPersistT m ()
       clientSyncProcessorSyncClientChanged m = forM_ (M.toList m) $ \(sid, st) ->
         updateWhere
           [serverIdField ==. Just sid]
           [ serverTimeField =. Just st,
             changedField =. False
           ]
-      clientSyncProcessorSyncClientDeleted :: Set sid -> SqlPersistT IO ()
+      clientSyncProcessorSyncClientDeleted :: Set sid -> SqlPersistT m ()
       clientSyncProcessorSyncClientDeleted s = forM_ (S.toList s) $ \sid ->
         deleteWhere [serverIdField ==. Just sid]
-      clientSyncProcessorSyncMergedConflict :: Map sid (Timed a) -> SqlPersistT IO ()
+      clientSyncProcessorSyncMergedConflict :: Map sid (Timed a) -> SqlPersistT m ()
       clientSyncProcessorSyncMergedConflict m = forM_ (M.toList m) $ \(sid, Timed a st) ->
         updateWhere
           [serverIdField ==. Just sid]
@@ -234,10 +243,10 @@ clientSyncProcessor
               changedField =. True
             ]
             ++ recordUpdates a
-      clientSyncProcessorSyncServerAdded :: Map sid (Timed a) -> SqlPersistT IO ()
+      clientSyncProcessorSyncServerAdded :: Map sid (Timed a) -> SqlPersistT m ()
       clientSyncProcessorSyncServerAdded m =
         insertMany_ $ map (uncurry makeSyncedClientThing) (M.toList m)
-      clientSyncProcessorSyncServerChanged :: Map sid (Timed a) -> SqlPersistT IO ()
+      clientSyncProcessorSyncServerChanged :: Map sid (Timed a) -> SqlPersistT m ()
       clientSyncProcessorSyncServerChanged m = forM_ (M.toList m) $ \(sid, Timed a st) -> do
         updateWhere
           [serverIdField ==. Just sid]
@@ -245,7 +254,7 @@ clientSyncProcessor
               changedField =. False
             ]
             ++ recordUpdates a
-      clientSyncProcessorSyncServerDeleted :: Set sid -> SqlPersistT IO ()
+      clientSyncProcessorSyncServerDeleted :: Set sid -> SqlPersistT m ()
       clientSyncProcessorSyncServerDeleted s = forM_ (S.toList s) $ \sid ->
         deleteWhere [serverIdField ==. Just sid]
 
@@ -253,18 +262,19 @@ clientSyncProcessor
 --
 -- You shouldn't need this.
 setupClientQuery ::
-  forall record sid a.
+  forall record sid a m.
   ( PersistEntity record,
     PersistField (Key record),
     PersistEntityBackend record ~ SqlBackend,
-    ToBackendKey SqlBackend record
+    ToBackendKey SqlBackend record,
+    MonadIO m
   ) =>
   (a -> record) ->
   (sid -> Timed a -> record) ->
   (sid -> Timed a -> record) ->
   (sid -> ServerTime -> record) ->
   ClientStore (Key record) sid a ->
-  SqlPersistT IO ()
+  SqlPersistT m ()
 setupClientQuery makeUnsyncedClientThing makeSyncedClientThing makeSyncedButChangedClientThing makeDeletedClientThing ClientStore {..} = do
   forM_ (M.toList clientStoreAddedItems) $ \(cid, t) ->
     insertKey cid $ makeUnsyncedClientThing t
@@ -278,13 +288,14 @@ setupClientQuery makeUnsyncedClientThing makeSyncedClientThing makeSyncedButChan
 --
 -- You shouldn't need this.
 clientGetStoreQuery ::
-  forall record sid a.
+  forall record sid a m.
   ( Ord sid,
     PersistEntity record,
     PersistField (Key record),
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
-    ToBackendKey SqlBackend record
+    ToBackendKey SqlBackend record,
+    MonadIO m
   ) =>
   EntityField record (Maybe sid) ->
   EntityField record (Maybe ServerTime) ->
@@ -293,7 +304,7 @@ clientGetStoreQuery ::
   (Entity record -> (Key record, a)) ->
   (Entity record -> (sid, Timed a)) ->
   (Entity record -> (sid, ServerTime)) ->
-  SqlPersistT IO (ClientStore (Key record) sid a)
+  SqlPersistT m (ClientStore (Key record) sid a)
 clientGetStoreQuery serverIdField serverTimeField changedField deletedField unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing = do
   clientStoreAddedItems <-
     M.fromList . map unmakeUnsyncedClientThing
@@ -330,12 +341,13 @@ clientGetStoreQuery serverIdField serverTimeField changedField deletedField unma
 
 -- | Process a sync request on the server side
 serverProcessSyncQuery ::
-  forall cid record a.
-  ( PersistEntity record,
+  forall cid record a m.
+  ( Ord cid,
+    PersistEntity record,
     PersistField (Key record),
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
-    Ord cid
+    MonadIO m
   ) =>
   -- | The server time field
   EntityField record ServerTime ->
@@ -347,31 +359,65 @@ serverProcessSyncQuery ::
   (a -> [Update record]) ->
   -- | A sync request
   SyncRequest cid (Key record) a ->
-  SqlPersistT IO (SyncResponse cid (Key record) a)
-serverProcessSyncQuery serverTimeField unmakeFunc makeFunc recordUpdates sr = do
-  let serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
-      serverSyncProcessorAddItem = insert . makeFunc
-      serverSyncProcessorChangeItem si st a = update si $ (serverTimeField =. st) : recordUpdates a
-      serverSyncProcessorDeleteItem = delete
-      proc = ServerSyncProcessor {..} :: ServerSyncProcessor cid (Key record) a (SqlPersistT IO)
-  processServerSyncCustom proc sr
+  SqlPersistT m (SyncResponse cid (Key record) a)
+serverProcessSyncQuery
+  serverTimeField
+  unmakeFunc
+  makeFunc
+  recordUpdates =
+    processServerSyncCustom $
+      serverSyncProcessor
+        serverTimeField
+        unmakeFunc
+        makeFunc
+        recordUpdates
+
+serverSyncProcessor ::
+  forall cid record a m.
+  ( Ord cid,
+    PersistEntity record,
+    PersistField (Key record),
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record,
+    MonadIO m
+  ) =>
+  -- | The server time field
+  EntityField record ServerTime ->
+  -- | How to load an item from the database
+  (Entity record -> (Key record, Timed a)) ->
+  -- | How to add an item in the database with initial server time
+  (a -> record) ->
+  -- | How to update a record given new data
+  (a -> [Update record]) ->
+  ServerSyncProcessor cid (Key record) a (SqlPersistT m)
+serverSyncProcessor
+  serverTimeField
+  unmakeFunc
+  makeFunc
+  recordUpdates =
+    let serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
+        serverSyncProcessorAddItem = insert . makeFunc
+        serverSyncProcessorChangeItem si st a = update si $ (serverTimeField =. st) : recordUpdates a
+        serverSyncProcessorDeleteItem = delete
+     in ServerSyncProcessor {..} :: ServerSyncProcessor cid (Key record) a (SqlPersistT m)
 
 -- | Process a sync request on the server side with a custom id field
 --
 -- You can use this function if you want to use a UUID as your id instead of the sqlkey of the item.
 serverProcessSyncWithCustomIdQuery ::
-  forall cid sid record a.
-  ( PersistEntity record,
+  forall cid sid record a m.
+  ( Ord cid,
+    Ord sid,
+    PersistEntity record,
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
-    Ord cid,
-    Ord sid
+    MonadIO m
   ) =>
   -- | The custom id field
   EntityField record sid ->
   -- | The generator to generate the custom id field
-  SqlPersistT IO sid ->
+  SqlPersistT m sid ->
   -- | The server time field
   EntityField record ServerTime ->
   -- | How to load an item from the database
@@ -382,17 +428,61 @@ serverProcessSyncWithCustomIdQuery ::
   (a -> [Update record]) ->
   -- | A sync request
   SyncRequest cid sid a ->
-  SqlPersistT IO (SyncResponse cid sid a)
-serverProcessSyncWithCustomIdQuery idField uuidGen serverTimeField unmakeFunc makeFunc recordUpdates sr = do
-  let serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
-      serverSyncProcessorAddItem a = do
-        uuid <- uuidGen
-        insert_ $ makeFunc uuid a
-        pure uuid
-      serverSyncProcessorChangeItem si st a = updateWhere [idField ==. si] $ (serverTimeField =. st) : recordUpdates a
-      serverSyncProcessorDeleteItem si = deleteWhere [idField ==. si]
-      proc = ServerSyncProcessor {..} :: ServerSyncProcessor cid sid a (SqlPersistT IO)
-  processServerSyncCustom proc sr
+  SqlPersistT m (SyncResponse cid sid a)
+serverProcessSyncWithCustomIdQuery
+  idField
+  uuidGen
+  serverTimeField
+  unmakeFunc
+  makeFunc
+  recordUpdates =
+    processServerSyncCustom $
+      serverSyncWithCustomIdProcessor
+        idField
+        uuidGen
+        serverTimeField
+        unmakeFunc
+        makeFunc
+        recordUpdates
+
+serverSyncWithCustomIdProcessor ::
+  forall cid sid record a m.
+  ( Ord cid,
+    Ord sid,
+    PersistEntity record,
+    PersistField sid,
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record,
+    MonadIO m
+  ) =>
+  -- | The custom id field
+  EntityField record sid ->
+  -- | The generator to generate the custom id field
+  SqlPersistT m sid ->
+  -- | The server time field
+  EntityField record ServerTime ->
+  -- | How to load an item from the database
+  (Entity record -> (sid, Timed a)) ->
+  -- | How to add an item in the database with initial server time
+  (sid -> a -> record) ->
+  -- | How to update a record given new data
+  (a -> [Update record]) ->
+  ServerSyncProcessor cid sid a (SqlPersistT m)
+serverSyncWithCustomIdProcessor
+  idField
+  uuidGen
+  serverTimeField
+  unmakeFunc
+  makeFunc
+  recordUpdates =
+    let serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
+        serverSyncProcessorAddItem a = do
+          uuid <- uuidGen
+          insert_ $ makeFunc uuid a
+          pure uuid
+        serverSyncProcessorChangeItem si st a = updateWhere [idField ==. si] $ (serverTimeField =. st) : recordUpdates a
+        serverSyncProcessorDeleteItem si = deleteWhere [idField ==. si]
+     in ServerSyncProcessor {..} :: ServerSyncProcessor cid sid a (SqlPersistT m)
 
 -- | Set up the server store
 --
