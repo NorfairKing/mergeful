@@ -341,6 +341,10 @@ serverProcessSyncQuery ::
   ) =>
   -- | The server time field
   EntityField record ServerTime ->
+  -- | The filters to select the relevant records
+  --
+  -- Use this if you want per-user syncing
+  [Filter record] ->
   -- | How to load an item from the database
   (Entity record -> (Key record, Timed a)) ->
   -- | How to add an item in the database with initial server time
@@ -352,12 +356,14 @@ serverProcessSyncQuery ::
   SqlPersistT m (SyncResponse cid (Key record) a)
 serverProcessSyncQuery
   serverTimeField
+  filters
   unmakeFunc
   makeFunc
   recordUpdates =
     processServerSyncCustom $
       serverSyncProcessor
         serverTimeField
+        filters
         unmakeFunc
         makeFunc
         recordUpdates
@@ -371,6 +377,10 @@ serverSyncProcessor ::
   ) =>
   -- | The server time field
   EntityField record ServerTime ->
+  -- | The filters to select the relevant records
+  --
+  -- Use this if you want per-user syncing
+  [Filter record] ->
   -- | How to load an item from the database
   (Entity record -> (Key record, Timed a)) ->
   -- | How to add an item in the database with initial server time
@@ -380,12 +390,13 @@ serverSyncProcessor ::
   ServerSyncProcessor cid (Key record) a (SqlPersistT m)
 serverSyncProcessor
   serverTimeField
+  filters
   unmakeFunc
   makeFunc
   recordUpdates =
     ServerSyncProcessor {..} :: ServerSyncProcessor cid (Key record) a (SqlPersistT m)
     where
-      serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
+      serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList filters []
       serverSyncProcessorAddItem = insert . makeFunc
       serverSyncProcessorChangeItem si st a = update si $ (serverTimeField =. st) : recordUpdates a
       serverSyncProcessorDeleteItem = delete
@@ -407,6 +418,10 @@ serverProcessSyncWithCustomIdQuery ::
   SqlPersistT m sid ->
   -- | The server time field
   EntityField record ServerTime ->
+  -- | The filters to select the relevant records
+  --
+  -- Use this if you want per-user syncing
+  [Filter record] ->
   -- | How to load an item from the database
   (Entity record -> (sid, Timed a)) ->
   -- | How to add an item in the database with initial server time
@@ -420,6 +435,7 @@ serverProcessSyncWithCustomIdQuery
   idField
   uuidGen
   serverTimeField
+  filters
   unmakeFunc
   makeFunc
   recordUpdates =
@@ -428,6 +444,7 @@ serverProcessSyncWithCustomIdQuery
         idField
         uuidGen
         serverTimeField
+        filters
         unmakeFunc
         makeFunc
         recordUpdates
@@ -446,6 +463,10 @@ serverSyncWithCustomIdProcessor ::
   SqlPersistT m sid ->
   -- | The server time field
   EntityField record ServerTime ->
+  -- | The filters to select the relevant records
+  --
+  -- Use this if you want per-user syncing
+  [Filter record] ->
   -- | How to load an item from the database
   (Entity record -> (sid, Timed a)) ->
   -- | How to add an item in the database with initial server time
@@ -457,11 +478,12 @@ serverSyncWithCustomIdProcessor
   idField
   uuidGen
   serverTimeField
+  filters
   unmakeFunc
   makeFunc
   recordUpdates = ServerSyncProcessor {..} :: ServerSyncProcessor cid sid a (SqlPersistT m)
     where
-      serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
+      serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList filters []
       serverSyncProcessorAddItem a = do
         uuid <- uuidGen
         insert_ $ makeFunc uuid a
