@@ -20,6 +20,7 @@ module Data.Mergeful.Persistent
 
     -- * Server side
     serverProcessSyncQuery,
+    serverProcessSyncWithCustomIdQuery,
 
     -- * Utils
 
@@ -329,30 +330,67 @@ clientGetStoreQuery serverIdField serverTimeField changedField deletedField unma
 
 -- | Process a sync request on the server side
 serverProcessSyncQuery ::
-  forall cid sid record a.
+  forall cid record a.
   ( PersistEntity record,
     PersistField (Key record),
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
-    Ord cid,
-    sid ~ Key record
+    Ord cid
   ) =>
   -- | The server time field
   EntityField record ServerTime ->
   -- | How to load an item from the database
-  (Entity record -> (sid, Timed a)) ->
+  (Entity record -> (Key record, Timed a)) ->
   -- | How to add an item in the database with initial server time
   (a -> record) ->
   -- | How to update a record given new data
   (a -> [Update record]) ->
   -- | A sync request
-  SyncRequest cid sid a ->
-  SqlPersistT IO (SyncResponse cid sid a)
+  SyncRequest cid (Key record) a ->
+  SqlPersistT IO (SyncResponse cid (Key record) a)
 serverProcessSyncQuery serverTimeField unmakeFunc makeFunc recordUpdates sr = do
   let serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
       serverSyncProcessorAddItem = insert . makeFunc
       serverSyncProcessorChangeItem si st a = update si $ (serverTimeField =. st) : recordUpdates a
       serverSyncProcessorDeleteItem = delete
+      proc = ServerSyncProcessor {..} :: ServerSyncProcessor cid (Key record) a (SqlPersistT IO)
+  processServerSyncCustom proc sr
+
+-- | Process a sync request on the server side with a custom id field
+--
+-- You can use this function if you want to use a UUID as your id instead of the sqlkey of the item.
+serverProcessSyncWithCustomIdQuery ::
+  forall cid sid record a.
+  ( PersistEntity record,
+    PersistField sid,
+    PersistEntityBackend record ~ SqlBackend,
+    ToBackendKey SqlBackend record,
+    Ord cid,
+    Ord sid
+  ) =>
+  -- | The custom id field
+  EntityField record sid ->
+  -- | The generator to generate the custom id field
+  SqlPersistT IO sid ->
+  -- | The server time field
+  EntityField record ServerTime ->
+  -- | How to load an item from the database
+  (Entity record -> (sid, Timed a)) ->
+  -- | How to add an item in the database with initial server time
+  (sid -> a -> record) ->
+  -- | How to update a record given new data
+  (a -> [Update record]) ->
+  -- | A sync request
+  SyncRequest cid sid a ->
+  SqlPersistT IO (SyncResponse cid sid a)
+serverProcessSyncWithCustomIdQuery idField uuidGen serverTimeField unmakeFunc makeFunc recordUpdates sr = do
+  let serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
+      serverSyncProcessorAddItem a = do
+        uuid <- uuidGen
+        insert_ $ makeFunc uuid a
+        pure uuid
+      serverSyncProcessorChangeItem si st a = updateWhere [idField ==. si] $ (serverTimeField =. st) : recordUpdates a
+      serverSyncProcessorDeleteItem si = deleteWhere [idField ==. si]
       proc = ServerSyncProcessor {..} :: ServerSyncProcessor cid sid a (SqlPersistT IO)
   processServerSyncCustom proc sr
 
