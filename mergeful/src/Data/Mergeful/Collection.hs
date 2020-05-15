@@ -804,10 +804,14 @@ instance (NFData ci, NFData si) => NFData (Identifier ci si)
 
 data ServerSyncProcessor ci si a m
   = ServerSyncProcessor
-      { serverSyncProcessorRead :: m (Map si (Timed a)),
-        serverSyncProcessorAddItem :: a -> m si,
-        serverSyncProcessorChangeItem :: si -> ServerTime -> a -> m (),
-        serverSyncProcessorDeleteItem :: si -> m ()
+      { -- | Read all items
+        serverSyncProcessorRead :: !(m (Map si (Timed a))),
+        -- | Add an item with 'initialServerTime'
+        serverSyncProcessorAddItem :: !(a -> m si),
+        -- | Update an item
+        serverSyncProcessorChangeItem :: !(si -> ServerTime -> a -> m ()),
+        -- | Delete an item
+        serverSyncProcessorDeleteItem :: !(si -> m ())
       }
   deriving (Generic)
 
@@ -924,37 +928,59 @@ processServerSync ::
   ServerStore si a ->
   SyncRequest ci si a ->
   m (SyncResponse ci si a, ServerStore si a)
-processServerSync genId ServerStore {..} sr@SyncRequest {..} =
-  -- Make tuples of requests for all of the items that only had a client identifier.
-  do
-    let unidentifedPairs :: Map ci (ServerItem a, ItemSyncRequest a)
-        unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
-        -- Make tuples of results for each of the unidentifier tuples.
-        unidentifedResults :: Map ci (ItemSyncResponse a, ServerItem a)
-        unidentifedResults = M.map (uncurry processServerItemSync) unidentifedPairs
-    generatedResults <- generateIdentifiersFor genId unidentifedResults
-    -- Gather the items that had a server identifier already.
-    let clientIdentifiedSyncRequests :: Map si (ItemSyncRequest a)
-        clientIdentifiedSyncRequests = identifiedItemSyncRequests sr
-        -- Make 'ServerItem's for each of the items on the server side
-        serverIdentifiedItems :: Map si (ServerItem a)
-        serverIdentifiedItems = M.map ServerFull serverStoreItems
-        -- Match up client items with server items by their id.
-        thesePairs :: Map si (These (ServerItem a) (ItemSyncRequest a))
-        thesePairs = unionTheseMaps serverIdentifiedItems clientIdentifiedSyncRequests
-        -- Make tuples of server 'ServerItem's and 'ItemSyncRequest's for each of the items with an id
-        requestPairs :: Map si (ServerItem a, ItemSyncRequest a)
-        requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
-        -- Make tuples of results for each of the tuplus that had a server identifier.
-        identifiedResults :: Map si (ItemSyncResponse a, ServerItem a)
-        identifiedResults = M.map (uncurry processServerItemSync) requestPairs
-    -- Put together the results together
-    let allResults :: Map (Identifier ci si) (ItemSyncResponse a, ServerItem a)
-        allResults =
-          M.union
-            (M.mapKeys OnlyServer identifiedResults)
-            (M.mapKeys (uncurry BothServerAndClient) generatedResults)
-    pure $ produceSyncResults allResults
+processServerSync genId ss sr = runStateT (processServerSyncCustom (pureServerSyncProcessor genId) sr) ss
+
+pureServerSyncProcessor :: (Ord si, Monad m) => m si -> ServerSyncProcessor ci si a (StateT (ServerStore si a) m)
+pureServerSyncProcessor genId = ServerSyncProcessor {..}
+  where
+    serverSyncProcessorRead = gets serverStoreItems
+    serverSyncProcessorAddItem a = do
+      i <- lift genId
+      modify (\(ServerStore m) -> ServerStore (M.insert i (Timed a initialServerTime) m))
+      pure i
+    serverSyncProcessorChangeItem si st a =
+      modify
+        ( \(ServerStore m) ->
+            let m' = M.adjust (const (Timed a st)) si m
+             in ServerStore m'
+        )
+    serverSyncProcessorDeleteItem si =
+      modify
+        ( \(ServerStore m) ->
+            let m' = M.delete si m
+             in ServerStore m'
+        )
+
+--  -- Make tuples of requests for all of the items that only had a client identifier.
+--  do
+--    let unidentifedPairs :: Map ci (ServerItem a, ItemSyncRequest a)
+--        unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
+--        -- Make tuples of results for each of the unidentifier tuples.
+--        unidentifedResults :: Map ci (ItemSyncResponse a, ServerItem a)
+--        unidentifedResults = M.map (uncurry processServerItemSync) unidentifedPairs
+--    generatedResults <- generateIdentifiersFor genId unidentifedResults
+--    -- Gather the items that had a server identifier already.
+--    let clientIdentifiedSyncRequests :: Map si (ItemSyncRequest a)
+--        clientIdentifiedSyncRequests = identifiedItemSyncRequests sr
+--        -- Make 'ServerItem's for each of the items on the server side
+--        serverIdentifiedItems :: Map si (ServerItem a)
+--        serverIdentifiedItems = M.map ServerFull serverStoreItems
+--        -- Match up client items with server items by their id.
+--        thesePairs :: Map si (These (ServerItem a) (ItemSyncRequest a))
+--        thesePairs = unionTheseMaps serverIdentifiedItems clientIdentifiedSyncRequests
+--        -- Make tuples of server 'ServerItem's and 'ItemSyncRequest's for each of the items with an id
+--        requestPairs :: Map si (ServerItem a, ItemSyncRequest a)
+--        requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
+--        -- Make tuples of results for each of the tuplus that had a server identifier.
+--        identifiedResults :: Map si (ItemSyncResponse a, ServerItem a)
+--        identifiedResults = M.map (uncurry processServerItemSync) requestPairs
+--    -- Put together the results together
+--    let allResults :: Map (Identifier ci si) (ItemSyncResponse a, ServerItem a)
+--        allResults =
+--          M.union
+--            (M.mapKeys OnlyServer identifiedResults)
+--            (M.mapKeys (uncurry BothServerAndClient) generatedResults)
+--    pure $ produceSyncResults allResults
 
 identifiedItemSyncRequests :: (Ord ci, Ord si) => SyncRequest ci si a -> Map si (ItemSyncRequest a)
 identifiedItemSyncRequests SyncRequest {..} =
