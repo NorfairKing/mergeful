@@ -30,7 +30,7 @@
 -- The server starts with an 'initialServerStore'.
 --
 -- * The server accepts a 'SyncRequest'.
--- * The server performs operations according to the functionality of 'processServerSync'.
+-- * The server performs operations according to the functionality of 'processServerSync' or 'processServerSyncCustom'.
 -- * The server respons with a 'SyncResponse'.
 --
 --
@@ -337,7 +337,7 @@ deleteItemFromClientStore i cs = cs {clientStoreAddedItems = M.delete i (clientS
 
 newtype ServerStore si a
   = ServerStore
-      { -- | A map of items, named using an 'i', together with the 'ServerTime' at which
+      { -- | A map of items, named using an 'si', together with the 'ServerTime' at which
         -- they were last synced.
         serverStoreItems :: Map si (Timed a)
       }
@@ -536,6 +536,9 @@ instance
           jNull "conflict-server-deleted" syncResponseConflictsServerDeleted
         ]
 
+-- | A sync response to start with.
+--
+-- It is entirely empty.
 emptySyncResponse :: SyncResponse ci si a
 emptySyncResponse =
   SyncResponse
@@ -850,7 +853,7 @@ data ServerSyncProcessor ci si a m
 --
 --     * Server Added (SA) (Nothing)
 --
--- For more detailed comments of the nine cases, see 'processServerItemSync' in the "Data.Mergeful.Ttem".
+-- For more detailed comments of the nine cases, see the source of 'processServerItemSync' in the "Data.Mergeful.Item".
 processServerSyncCustom ::
   forall ci si a m.
   ( Ord ci,
