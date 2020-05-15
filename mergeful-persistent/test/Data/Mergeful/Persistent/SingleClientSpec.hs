@@ -48,7 +48,6 @@ spec = modifyMaxShrinks (const 0) $ oneClientSpec $ do
 mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 mergeFunctionSpec strat = do
   let mergeFunc = clientMergeSyncResponse strat
-      syncFunc = sync strat
   describe "Single Client" $ do
     describe "Single item" $ do
       it "succesfully downloads an item from the server for an empty client" $ \te ->
@@ -111,17 +110,6 @@ mergeFunctionSpec strat = do
               sort (M.elems (M.map timedValue (clientStoreSyncedItems cstore2)))
                 `shouldBe` sort (M.elems items)
               clientStoreSyncedItems cstore2 `shouldBe` serverStoreItems sstore2
-      it "is idempotent with one client" $ \te ->
-        forAllValid $ \cstore1 ->
-          forAllValid $ \sstore1 ->
-            runTest te $ do
-              setupClient cstore1
-              setupServer sstore1
-              void syncFunc
-              (cstore2, sstore2, sstore3, cstore3) <- syncFunc
-              lift $ do
-                cstore2 `shouldBe` cstore3
-                sstore2 `shouldBe` sstore3
 
 emptyResponseSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 emptyResponseSpec strat = do
@@ -159,17 +147,6 @@ type SReq = SyncRequest ClientThingId ServerThingId Thing
 type SS = ServerStore ServerThingId Thing
 
 type SResp = SyncResponse ClientThingId ServerThingId Thing
-
-sync :: ItemMergeStrategy Thing -> T (CS, SS, SS, CS)
-sync strat = do
-  cstore1 <- clientGetStore
-  req <- clientMakeSyncRequest
-  sstore1 <- serverGetStore
-  resp <- serverProcessSync req
-  sstore2 <- serverGetStore
-  clientMergeSyncResponse strat resp
-  cstore2 <- clientGetStore
-  pure (cstore1, sstore1, sstore2, cstore2)
 
 setupClient :: CS -> T ()
 setupClient = runClientDB . setupClientThingQuery
