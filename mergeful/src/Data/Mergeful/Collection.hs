@@ -232,7 +232,7 @@ clientStoreUndeletedSyncIdSet ClientStore {..} =
 -- | The set of server ids.
 --
 -- This includes the ids of items that have been marked as deleted.
-clientStoreSyncIdSet :: (Ord ci, Ord si) => ClientStore ci si a -> Set si
+clientStoreSyncIdSet :: Ord si => ClientStore ci si a -> Set si
 clientStoreSyncIdSet ClientStore {..} =
   S.unions
     [ M.keysSet clientStoreSyncedItems,
@@ -856,8 +856,7 @@ data ServerSyncProcessor ci si a m
 -- For more detailed comments of the nine cases, see the source of 'processServerItemSync' in the "Data.Mergeful.Item".
 processServerSyncCustom ::
   forall ci si a m.
-  ( Ord ci,
-    Ord si,
+  ( Ord si,
     Monad m
   ) =>
   -- | Your server sync processor
@@ -921,8 +920,7 @@ processServerSyncCustom ServerSyncProcessor {..} SyncRequest {..} = do
 -- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
 processServerSync ::
   forall ci si a m.
-  ( Ord ci,
-    Ord si,
+  ( Ord si,
     Monad m
   ) =>
   -- | The action that is guaranteed to generate unique identifiers

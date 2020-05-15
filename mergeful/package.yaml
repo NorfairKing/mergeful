@@ -4,7 +4,7 @@ github:              "NorfairKing/mergeful"
 license:             MIT
 author:              "Tom Sydney Kerckhove"
 maintainer:          "syd@cs-syd.eu"
-copyright:           "Copyright: (c) 2019 Tom Sydney Kerckhove"
+copyright:           "Copyright: (c) 2019-2020 Tom Sydney Kerckhove"
 
 extra-source-files:
 - README.md
@@ -15,6 +15,9 @@ description:         Please see the README on GitHub at <https://github.com/Norf
 
 library:
   source-dirs: src
+  ghc-options:
+    - -Wall
+    - -fwarn-redundant-constraints
   dependencies:
     - base >= 4.7 && < 5
     - aeson
