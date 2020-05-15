@@ -34,7 +34,6 @@ module Data.Mergeful.Persistent
 where
 
 import Control.Monad
-import Control.Monad.State
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe
@@ -73,39 +72,46 @@ clientMakeSyncRequestQuery ::
   -- | How to read a deleted client item
   (Entity record -> (sid, ServerTime)) ->
   SqlPersistT IO (SyncRequest (Key record) sid a)
-clientMakeSyncRequestQuery serverIdField serverTimeField changedField deletedField unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing = do
-  syncRequestNewItems <-
-    M.fromList . map unmakeUnsyncedClientThing
-      <$> selectList
-        [ serverIdField ==. Nothing,
-          serverTimeField ==. Nothing
-        ]
-        []
-  syncRequestKnownItems <-
-    M.fromList . map unmakeDeletedClientThing
-      <$> selectList
-        [ serverIdField !=. Nothing,
-          serverTimeField !=. Nothing,
-          changedField ==. False,
-          deletedField ==. False
-        ]
-        []
-  syncRequestKnownButChangedItems <-
-    M.fromList . map unmakeSyncedClientThing
-      <$> selectList
-        [ serverIdField !=. Nothing,
-          serverTimeField !=. Nothing,
-          changedField ==. True,
-          deletedField ==. False
-        ]
-        []
-  syncRequestDeletedItems <-
-    M.fromList . map unmakeDeletedClientThing
-      <$> selectList
-        [ deletedField ==. True
-        ]
-        []
-  pure SyncRequest {..}
+clientMakeSyncRequestQuery
+  serverIdField
+  serverTimeField
+  changedField
+  deletedField
+  unmakeUnsyncedClientThing
+  unmakeSyncedClientThing
+  unmakeDeletedClientThing = do
+    syncRequestNewItems <-
+      M.fromList . map unmakeUnsyncedClientThing
+        <$> selectList
+          [ serverIdField ==. Nothing,
+            serverTimeField ==. Nothing
+          ]
+          []
+    syncRequestKnownItems <-
+      M.fromList . map unmakeDeletedClientThing
+        <$> selectList
+          [ serverIdField !=. Nothing,
+            serverTimeField !=. Nothing,
+            changedField ==. False,
+            deletedField ==. False
+          ]
+          []
+    syncRequestKnownButChangedItems <-
+      M.fromList . map unmakeSyncedClientThing
+        <$> selectList
+          [ serverIdField !=. Nothing,
+            serverTimeField !=. Nothing,
+            changedField ==. True,
+            deletedField ==. False
+          ]
+          []
+    syncRequestDeletedItems <-
+      M.fromList . map unmakeDeletedClientThing
+        <$> selectList
+          [ deletedField ==. True
+          ]
+          []
+    pure SyncRequest {..}
 
 clientMergeSyncResponseQuery ::
   forall record sid a.
@@ -331,47 +337,24 @@ serverProcessSyncQuery ::
     Ord cid,
     sid ~ Key record
   ) =>
-  -- | The id field
-  EntityField record sid ->
-  -- | How to save an item in the database
-  (Key record -> Timed a -> Entity record) ->
+  -- | The server time field
+  EntityField record ServerTime ->
   -- | How to load an item from the database
   (Entity record -> (sid, Timed a)) ->
+  -- | How to add an item in the database with initial server time
+  (a -> record) ->
+  -- | How to update a record given new data
+  (a -> [Update record]) ->
   -- | A sync request
   SyncRequest cid sid a ->
   SqlPersistT IO (SyncResponse cid sid a)
-serverProcessSyncQuery idField makeFunc unmakeFunc sreq = do
-  -- FIXME this should be possible more efficiently.
-  -- This should also be possible in a nicer way than juggling those ids
-  store <- serverGetStoreQuery unmakeFunc
-  lastThingId <- fmap entityKey <$> selectFirst [] [Desc idField]
-  -- This is a lot of nonsense just to make sure that we get fresh ids
-  -- If we had a custom sync processor then we could just call 'insert' and be done with it.
-  let roundSucc i = if i == maxBound then minBound else succ i
-      nextKey :: Key record -> Key record
-      nextKey = toSqlKey . roundSucc . fromSqlKey
-      takenIds = M.keysSet $ serverStoreItems store
-      nextFreeKey takens i =
-        if i `S.member` takens
-          then nextFreeKey takens (nextKey i) -- Keep looking
-          else (i, S.insert i takens) -- this one is free, but will now be taken.
-      firstFreeId :: sid
-      firstFreeId = fromMaybe (toSqlKey 0) lastThingId
-      getNextFreeId = state $ \(i, takens) ->
-        let (nf, takens') = nextFreeKey takens i
-         in (nf, (nf, takens'))
-  let (resp, store') =
-        evalState
-          ( processServerSync getNextFreeId store sreq ::
-              State (Key record, Set (Key record))
-                ( SyncResponse cid (Key record) a,
-                  ServerStore (Key record) a
-                )
-          )
-          (firstFreeId, takenIds)
-  deleteWhere ([] :: [Filter record]) -- Clean slate
-  setupServerQuery makeFunc store'
-  pure resp
+serverProcessSyncQuery serverTimeField unmakeFunc makeFunc recordUpdates sr = do
+  let serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList [] []
+      serverSyncProcessorAddItem = insert . makeFunc
+      serverSyncProcessorChangeItem si st a = update si $ (serverTimeField =. st) : recordUpdates a
+      serverSyncProcessorDeleteItem = delete
+      proc = ServerSyncProcessor {..} :: ServerSyncProcessor cid sid a (SqlPersistT IO)
+  processServerSyncCustom proc sr
 
 -- | Set up the server store
 --
