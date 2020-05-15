@@ -392,7 +392,7 @@ instance
   where
   parseJSON =
     withObject "SyncRequest" $ \o ->
-      SyncRequest <$> o .:? "new" .!= M.empty <*> o .:? "synced" .!= M.empty
+      SyncRequest <$> o .:? "added" .!= M.empty <*> o .:? "synced" .!= M.empty
         <*> o .:? "changed" .!= M.empty
         <*> o .:? "deleted" .!= M.empty
 
@@ -400,7 +400,7 @@ instance (ToJSONKey ci, ToJSONKey si, ToJSON a) => ToJSON (SyncRequest ci si a) 
   toJSON SyncRequest {..} =
     object $
       catMaybes
-        [ jNull "new" syncRequestNewItems,
+        [ jNull "added" syncRequestNewItems,
           jNull "synced" syncRequestKnownItems,
           jNull "changed" syncRequestKnownButChangedItems,
           jNull "deleted" syncRequestDeletedItems
