@@ -811,6 +811,44 @@ data ServerSyncProcessor ci si a m
       }
   deriving (Generic)
 
+-- | Process a server sync
+--
+-- === __Implementation Details__
+--
+-- There are four cases for the items in the sync request
+--
+-- - Added (A)
+-- - Synced (S)
+-- - Changed (C)
+-- - Deleted (D)
+--
+-- Each of them present options and may require action on the sever side:
+--
+-- * Added:
+--
+--     * Client Added (CA) (This is the only case where a new identifier needs to be generated.)
+--
+-- * Synced:
+--
+--     * Server Changed (SC) (Nothing)
+--     * Server Deleted (SD) (Nothing)
+--
+-- * Changed:
+--
+--     * Client Changed (CC) (Update value and increment server time)
+--     * Change Conflict (CConf) (Nothing)
+--     * Server Deleted Conflict (SDC) (Nothing)
+--
+-- * Deleted:
+--
+--     * Client Deleted (CD) (Delete the item)
+--     * Client Deleted Conflict (CDC) (Nothing)
+--
+-- * Extra:
+--
+--     * Server Added (SA) (Nothing)
+--
+-- For more detailed comments of the nine cases, see 'processServerItemSync' in the "Data.Mergeful.Ttem".
 processServerSyncCustom ::
   forall ci si a m.
   ( Ord ci,
@@ -820,7 +858,59 @@ processServerSyncCustom ::
   ServerSyncProcessor ci si a m ->
   SyncRequest ci si a ->
   m (SyncResponse ci si a)
-processServerSyncCustom proc@ServerSyncProcessor {..} sr = undefined
+processServerSyncCustom proc@ServerSyncProcessor {..} SyncRequest {..} = do
+  serverItems <- serverSyncProcessorRead
+  -- A: CA (generate a new identifier)
+  syncResponseClientAdded <- forM syncRequestNewItems $ \a -> do
+    si <- serverSyncProcessorAddItem a
+    pure $ ClientAddition {clientAdditionId = si, clientAdditionServerTime = initialServerTime}
+  -- C:
+  let decideOnSynced tup@(sc, sd) (si, ct) =
+        case M.lookup si serverItems of
+          -- SD: The server must have deleted it.
+          Nothing -> (sc, S.insert si sd)
+          Just t@(Timed _ st) ->
+            if ct >= st
+              then tup -- In sync
+              else (M.insert si t sc, sd) -- SC: The server has changed it because its server time is newer
+  let (syncResponseServerChanged, syncResponseServerDeleted) = foldl decideOnSynced (M.empty, S.empty) (M.toList syncRequestKnownItems)
+  -- S:
+  let decideOnChanged tup@(cc, cConf, sdc) (si, clientTimed@(Timed clientItem ct)) = do
+        case M.lookup si serverItems of
+          -- SDC
+          Nothing -> pure (cc, cConf, S.insert si sdc)
+          Just serverTimed@(Timed _ st) ->
+            if ct >= st
+              then do
+                -- CC
+                let st' = incrementServerTime st
+                -- Update the server item
+                serverSyncProcessorChangeItem si st' clientItem
+                pure (M.insert si st' cc, cConf, sdc)
+              else do
+                -- CConf
+                pure (cc, M.insert si serverTimed cConf, sdc)
+  (syncResponseClientChanged, syncResponseConflicts, syncResponseConflictsServerDeleted) <- foldM decideOnChanged (M.empty, M.empty, S.empty) (M.toList syncRequestKnownButChangedItems)
+  --- D:
+  let decideOnDeleted tup@(cd, cdc) (si, ct) = do
+        case M.lookup si serverItems of
+          Nothing -> do
+            -- CD: It was already deleted on the server side, Just pretend that the client made that happen.
+            pure (S.insert si cd, cdc)
+          Just serverTimed@(Timed _ st) ->
+            if ct >= st
+              then do
+                -- CD
+                -- Delete the item
+                serverSyncProcessorDeleteItem si
+                pure (S.insert si cd, cdc)
+              else do
+                -- CDC
+                pure (cd, M.insert si serverTimed cdc)
+  (syncResponseClientDeleted, syncResponseConflictsClientDeleted) <- foldM decideOnDeleted (S.empty, M.empty) (M.toList syncRequestDeletedItems)
+  -- Extra: for all items that are in the server but not in the sync request, we need to say they are server added.
+  let syncResponseServerAdded = serverItems `M.difference` M.unions [() <$ syncRequestKnownItems, () <$ syncRequestKnownButChangedItems, () <$ syncRequestDeletedItems]
+  pure SyncResponse {..}
 
 -- | Serve an 'SyncRequest' using the current 'ServerStore', producing an 'SyncResponse' and a new 'ServerStore'.
 processServerSync ::
