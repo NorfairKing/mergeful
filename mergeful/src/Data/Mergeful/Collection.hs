@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -103,7 +102,6 @@ module Data.Mergeful.Collection
     ServerSyncProcessor (..),
     processServerSyncCustom,
     emptySyncResponse,
-    addToSyncResponse,
     initialServerTime,
     incrementServerTime,
   )
@@ -859,10 +857,11 @@ processServerSyncCustom ::
     Ord si,
     Monad m
   ) =>
+  -- | Your server sync processor
   ServerSyncProcessor ci si a m ->
   SyncRequest ci si a ->
   m (SyncResponse ci si a)
-processServerSyncCustom proc@ServerSyncProcessor {..} SyncRequest {..} = do
+processServerSyncCustom ServerSyncProcessor {..} SyncRequest {..} = do
   serverItems <- serverSyncProcessorRead
   -- A: CA (generate a new identifier)
   syncResponseClientAdded <- forM syncRequestNewItems $ \a -> do
@@ -879,7 +878,7 @@ processServerSyncCustom proc@ServerSyncProcessor {..} SyncRequest {..} = do
               else (M.insert si t sc, sd) -- SC: The server has changed it because its server time is newer
   let (syncResponseServerChanged, syncResponseServerDeleted) = foldl decideOnSynced (M.empty, S.empty) (M.toList syncRequestKnownItems)
   -- S:
-  let decideOnChanged tup@(cc, cConf, sdc) (si, clientTimed@(Timed clientItem ct)) = do
+  let decideOnChanged (cc, cConf, sdc) (si, Timed clientItem ct) = do
         case M.lookup si serverItems of
           -- SDC
           Nothing -> pure (cc, cConf, S.insert si sdc)
@@ -896,7 +895,7 @@ processServerSyncCustom proc@ServerSyncProcessor {..} SyncRequest {..} = do
                 pure (cc, M.insert si serverTimed cConf, sdc)
   (syncResponseClientChanged, syncResponseConflicts, syncResponseConflictsServerDeleted) <- foldM decideOnChanged (M.empty, M.empty, S.empty) (M.toList syncRequestKnownButChangedItems)
   --- D:
-  let decideOnDeleted tup@(cd, cdc) (si, ct) = do
+  let decideOnDeleted (cd, cdc) (si, ct) = do
         case M.lookup si serverItems of
           Nothing -> do
             -- CD: It was already deleted on the server side, Just pretend that the client made that happen.
@@ -930,7 +929,12 @@ processServerSync ::
   m (SyncResponse ci si a, ServerStore si a)
 processServerSync genId ss sr = runStateT (processServerSyncCustom (pureServerSyncProcessor genId) sr) ss
 
-pureServerSyncProcessor :: (Ord si, Monad m) => m si -> ServerSyncProcessor ci si a (StateT (ServerStore si a) m)
+-- | A potentially pure sync processor
+pureServerSyncProcessor ::
+  (Ord si, Monad m) =>
+  -- | The action that is guaranteed to generate unique identifiers
+  m si ->
+  ServerSyncProcessor ci si a (StateT (ServerStore si a) m)
 pureServerSyncProcessor genId = ServerSyncProcessor {..}
   where
     serverSyncProcessorRead = gets serverStoreItems
@@ -951,153 +955,5 @@ pureServerSyncProcessor genId = ServerSyncProcessor {..}
              in ServerStore m'
         )
 
---  -- Make tuples of requests for all of the items that only had a client identifier.
---  do
---    let unidentifedPairs :: Map ci (ServerItem a, ItemSyncRequest a)
---        unidentifedPairs = M.map (\a -> (ServerEmpty, ItemSyncRequestNew a)) syncRequestNewItems
---        -- Make tuples of results for each of the unidentifier tuples.
---        unidentifedResults :: Map ci (ItemSyncResponse a, ServerItem a)
---        unidentifedResults = M.map (uncurry processServerItemSync) unidentifedPairs
---    generatedResults <- generateIdentifiersFor genId unidentifedResults
---    -- Gather the items that had a server identifier already.
---    let clientIdentifiedSyncRequests :: Map si (ItemSyncRequest a)
---        clientIdentifiedSyncRequests = identifiedItemSyncRequests sr
---        -- Make 'ServerItem's for each of the items on the server side
---        serverIdentifiedItems :: Map si (ServerItem a)
---        serverIdentifiedItems = M.map ServerFull serverStoreItems
---        -- Match up client items with server items by their id.
---        thesePairs :: Map si (These (ServerItem a) (ItemSyncRequest a))
---        thesePairs = unionTheseMaps serverIdentifiedItems clientIdentifiedSyncRequests
---        -- Make tuples of server 'ServerItem's and 'ItemSyncRequest's for each of the items with an id
---        requestPairs :: Map si (ServerItem a, ItemSyncRequest a)
---        requestPairs = M.map (fromThese ServerEmpty ItemSyncRequestPoll) thesePairs
---        -- Make tuples of results for each of the tuplus that had a server identifier.
---        identifiedResults :: Map si (ItemSyncResponse a, ServerItem a)
---        identifiedResults = M.map (uncurry processServerItemSync) requestPairs
---    -- Put together the results together
---    let allResults :: Map (Identifier ci si) (ItemSyncResponse a, ServerItem a)
---        allResults =
---          M.union
---            (M.mapKeys OnlyServer identifiedResults)
---            (M.mapKeys (uncurry BothServerAndClient) generatedResults)
---    pure $ produceSyncResults allResults
-
-identifiedItemSyncRequests :: (Ord ci, Ord si) => SyncRequest ci si a -> Map si (ItemSyncRequest a)
-identifiedItemSyncRequests SyncRequest {..} =
-  M.unions
-    [ M.map ItemSyncRequestKnown syncRequestKnownItems,
-      M.map ItemSyncRequestKnownButChanged syncRequestKnownButChangedItems,
-      M.map ItemSyncRequestDeletedLocally syncRequestDeletedItems
-    ]
-
-generateIdentifiersFor ::
-  (Ord ci, Ord si, Monad m) =>
-  m si ->
-  Map ci (ItemSyncResponse a, ServerItem a) ->
-  m (Map (si, ci) (ItemSyncResponse a, ServerItem a))
-generateIdentifiersFor genId unidentifedResults =
-  fmap M.fromList
-    $ forM (M.toList unidentifedResults)
-    $ \(int, r) -> do
-      uuid <- genId
-      pure ((uuid, int), r)
-
-produceSyncResults ::
-  forall ci si a.
-  (Ord ci, Ord si) =>
-  Map (Identifier ci si) (ItemSyncResponse a, ServerItem a) ->
-  (SyncResponse ci si a, ServerStore si a)
-produceSyncResults allResults =
-  -- Produce a sync response
-  let resp :: SyncResponse ci si a
-      resp =
-        M.foldlWithKey
-          (\sr cid (isr, _) -> addToSyncResponse sr cid isr)
-          emptySyncResponse
-          allResults
-      -- Produce a new server store
-      newStore :: Map si (Timed a)
-      newStore =
-        M.mapMaybe
-          ( \case
-              ServerEmpty -> Nothing
-              ServerFull t -> Just t
-          )
-          $ M.map snd
-          $ M.mapKeys
-            ( \case
-                OnlyServer i -> i
-                BothServerAndClient i _ -> i
-            )
-            allResults
-   in -- return them both.
-      (resp, ServerStore newStore)
-
--- | Given an incomplete 'SyncResponse', an id, possibly a client ID too, and
--- an 'ItemSyncResponse', produce a less incomplete 'SyncResponse'.
-addToSyncResponse ::
-  (Ord ci, Ord si) =>
-  SyncResponse ci si a ->
-  Identifier ci si ->
-  ItemSyncResponse a ->
-  SyncResponse ci si a
-addToSyncResponse sr cid isr =
-  case cid of
-    BothServerAndClient i int ->
-      case isr of
-        ItemSyncResponseClientAdded st ->
-          sr
-            { syncResponseClientAdded =
-                M.insert int (ClientAddition i st) $ syncResponseClientAdded sr
-            }
-        _ -> error "should not happen"
-    OnlyServer i ->
-      case isr of
-        ItemSyncResponseInSyncEmpty -> sr
-        ItemSyncResponseInSyncFull -> sr
-        ItemSyncResponseClientAdded _ -> sr -- Should not happen.
-        ItemSyncResponseClientChanged st ->
-          sr {syncResponseClientChanged = M.insert i st $ syncResponseClientChanged sr}
-        ItemSyncResponseClientDeleted ->
-          sr {syncResponseClientDeleted = S.insert i $ syncResponseClientDeleted sr}
-        ItemSyncResponseServerAdded t ->
-          sr {syncResponseServerAdded = M.insert i t $ syncResponseServerAdded sr}
-        ItemSyncResponseServerChanged t ->
-          sr {syncResponseServerChanged = M.insert i t $ syncResponseServerChanged sr}
-        ItemSyncResponseServerDeleted ->
-          sr {syncResponseServerDeleted = S.insert i $ syncResponseServerDeleted sr}
-        ItemSyncResponseConflict a ->
-          sr {syncResponseConflicts = M.insert i a $ syncResponseConflicts sr}
-        ItemSyncResponseConflictClientDeleted a ->
-          sr
-            { syncResponseConflictsClientDeleted =
-                M.insert i a $ syncResponseConflictsClientDeleted sr
-            }
-        ItemSyncResponseConflictServerDeleted ->
-          sr
-            { syncResponseConflictsServerDeleted =
-                S.insert i $ syncResponseConflictsServerDeleted sr
-            }
-
-unionTheseMaps :: Ord k => Map k a -> Map k b -> Map k (These a b)
-unionTheseMaps m1 m2 = M.unionWith go (M.map This m1) (M.map That m2)
-  where
-    go (This a) (That b) = These a b
-    go _ _ = error "should not happen."
-
 distinct :: Eq a => [a] -> Bool
 distinct ls = nub ls == ls
-
--- Inlined because holy smokes, `these` has a _lot_ of dependencies.
-data These a b
-  = This a
-  | That b
-  | These a b
-  deriving (Show, Eq, Generic)
-
-fromThese :: a -> b -> These a b -> (a, b)
-fromThese a b t =
-  case t of
-    This a' -> (a', b)
-    That b' -> (a, b')
-    These a' b' -> (a', b')
