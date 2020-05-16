@@ -423,7 +423,7 @@ serverProcessSyncWithCustomIdQuery ::
   -- Use this if you want per-user syncing
   [Filter record] ->
   -- | How to load an item from the database
-  (Entity record -> (sid, Timed a)) ->
+  (record -> (sid, Timed a)) ->
   -- | How to add an item in the database with initial server time
   (sid -> a -> record) ->
   -- | How to update a record given new data
@@ -468,8 +468,8 @@ serverSyncWithCustomIdProcessor ::
   -- Use this if you want per-user syncing
   [Filter record] ->
   -- | How to load an item from the database
-  (Entity record -> (sid, Timed a)) ->
-  -- | How to add an item in the database with initial server time
+  (record -> (sid, Timed a)) ->
+  -- | How to add an item in the database with 'initialServerTime'
   (sid -> a -> record) ->
   -- | How to update a record given new data
   (a -> [Update record]) ->
@@ -483,7 +483,7 @@ serverSyncWithCustomIdProcessor
   makeFunc
   recordUpdates = ServerSyncProcessor {..} :: ServerSyncProcessor cid sid a (SqlPersistT m)
     where
-      serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList filters []
+      serverSyncProcessorRead = M.fromList . map (\(Entity _ record) -> unmakeFunc record) <$> selectList filters []
       serverSyncProcessorAddItem a = do
         uuid <- uuidGen
         insert_ $ makeFunc uuid a

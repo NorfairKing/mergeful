@@ -356,15 +356,15 @@ initialServerStore = ServerStore {serverStoreItems = M.empty}
 data SyncRequest ci si a
   = SyncRequest
       { -- | These items are new locally but have not been synced to the server yet.
-        syncRequestNewItems :: Map ci a,
+        syncRequestNewItems :: !(Map ci a),
         -- | These items have been synced at their respective 'ServerTime's.
-        syncRequestKnownItems :: Map si ServerTime,
+        syncRequestKnownItems :: !(Map si ServerTime),
         -- | These items have been synced at their respective 'ServerTime's
         -- but modified locally since then.
-        syncRequestKnownButChangedItems :: Map si (Timed a),
+        syncRequestKnownButChangedItems :: !(Map si (Timed a)),
         -- | These items have been deleted locally after they were synced
         -- but the server has not been notified of that yet.
-        syncRequestDeletedItems :: Map si ServerTime
+        syncRequestDeletedItems :: !(Map si ServerTime)
       }
   deriving (Show, Eq, Generic)
 
@@ -440,42 +440,42 @@ data SyncResponse ci si a
       { -- | The client added these items and server has succesfully been made aware of that.
         --
         -- The client needs to update their server times
-        syncResponseClientAdded :: Map ci (ClientAddition si),
+        syncResponseClientAdded :: !(Map ci (ClientAddition si)),
         -- | The client changed these items and server has succesfully been made aware of that.
         --
         -- The client needs to update their server times
-        syncResponseClientChanged :: Map si ServerTime,
+        syncResponseClientChanged :: !(Map si ServerTime),
         -- | The client deleted these items and server has succesfully been made aware of that.
         --
         -- The client can delete them from its deleted items
-        syncResponseClientDeleted :: Set si,
+        syncResponseClientDeleted :: !(Set si),
         -- | These items have been added on the server side
         --
         -- The client should add them too.
-        syncResponseServerAdded :: Map si (Timed a),
+        syncResponseServerAdded :: !(Map si (Timed a)),
         -- | These items have been modified on the server side.
         --
         -- The client should modify them too.
-        syncResponseServerChanged :: Map si (Timed a),
+        syncResponseServerChanged :: !(Map si (Timed a)),
         -- | These items were deleted on the server side
         --
         -- The client should delete them too
-        syncResponseServerDeleted :: Set si,
+        syncResponseServerDeleted :: !(Set si),
         -- | These are conflicts where the server and the client both have an item, but it is different.
         --
         -- The server kept its part of each, the client can either take whatever the server gave them
         -- or deal with the conflicts somehow, and then try to re-sync.
-        syncResponseConflicts :: Map si (Timed a),
+        syncResponseConflicts :: !(Map si (Timed a)),
         -- | These are conflicts where the server has an item but the client does not.
         --
         -- The server kept its item, the client can either take whatever the server gave them
         -- or deal with the conflicts somehow, and then try to re-sync.
-        syncResponseConflictsClientDeleted :: Map si (Timed a),
+        syncResponseConflictsClientDeleted :: !(Map si (Timed a)),
         -- | These are conflicts where the server has no item but the client has a modified item.
         --
         -- The server left its item deleted, the client can either delete its items too
         -- or deal with the conflicts somehow, and then try to re-sync.
-        syncResponseConflictsServerDeleted :: Set si
+        syncResponseConflictsServerDeleted :: !(Set si)
       }
   deriving (Show, Eq, Generic)
 
@@ -706,8 +706,14 @@ data ClientSyncProcessor ci si a (m :: * -> *)
   = ClientSyncProcessor
       { -- | Get the synced values with keys in the given set
         clientSyncProcessorQuerySyncedButChangedValues :: !(Set si -> m (Map si (Timed a))),
+        -- | Complete additions that were acknowledged by the server.
+        -- This involves saving the server id and the server time
         clientSyncProcessorSyncClientAdded :: !(Map ci (ClientAddition si) -> m ()),
+        -- | Complete changes that were acknowledged by the server
+        -- This involves updating the server time
         clientSyncProcessorSyncClientChanged :: !(Map si ServerTime -> m ()),
+        -- | Complete deletions that were acknowledged by the server
+        -- This means deleting these tombstoned items entirely
         clientSyncProcessorSyncClientDeleted :: !(Set si -> m ()),
         -- | Store the items that were in a conflict but the conflict was resolved correctly.
         -- These items should be marked as changed.
