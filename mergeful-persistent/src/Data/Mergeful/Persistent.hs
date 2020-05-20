@@ -57,12 +57,13 @@ deriving instance PersistFieldSql ServerTime
 
 -- | Make a sync request
 clientMakeSyncRequestQuery ::
-  forall record sid a.
+  forall record sid a m.
   ( Ord sid,
     PersistEntity record,
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
-    ToBackendKey SqlBackend record
+    ToBackendKey SqlBackend record,
+    MonadIO m
   ) =>
   -- | The server id field
   EntityField record (Maybe sid) ->
@@ -73,12 +74,12 @@ clientMakeSyncRequestQuery ::
   -- | The deleted flag
   EntityField record Bool ->
   -- | How to read an unsynced client item
-  (Entity record -> (Key record, a)) ->
-  -- | How to read a synced client item
-  (Entity record -> (sid, Timed a)) ->
-  -- | How to read a deleted client item
-  (Entity record -> (sid, ServerTime)) ->
-  SqlPersistT IO (SyncRequest (Key record) sid a)
+  (record -> a) ->
+  -- | How to read a synced client item that's been changed
+  (record -> (sid, Timed a)) ->
+  -- | How to read a synced or deleted client item
+  (record -> (sid, ServerTime)) ->
+  SqlPersistT m (SyncRequest (Key record) sid a)
 clientMakeSyncRequestQuery
   serverIdField
   serverTimeField
@@ -88,14 +89,14 @@ clientMakeSyncRequestQuery
   unmakeSyncedClientThing
   unmakeDeletedClientThing = do
     syncRequestNewItems <-
-      M.fromList . map unmakeUnsyncedClientThing
+      M.fromList . map (\(Entity cid r) -> (cid, unmakeUnsyncedClientThing r))
         <$> selectList
           [ serverIdField ==. Nothing,
             serverTimeField ==. Nothing
           ]
           []
     syncRequestKnownItems <-
-      M.fromList . map unmakeDeletedClientThing
+      M.fromList . map (unmakeDeletedClientThing . entityVal)
         <$> selectList
           [ serverIdField !=. Nothing,
             serverTimeField !=. Nothing,
@@ -104,7 +105,7 @@ clientMakeSyncRequestQuery
           ]
           []
     syncRequestKnownButChangedItems <-
-      M.fromList . map unmakeSyncedClientThing
+      M.fromList . map (unmakeSyncedClientThing . entityVal)
         <$> selectList
           [ serverIdField !=. Nothing,
             serverTimeField !=. Nothing,
@@ -113,7 +114,7 @@ clientMakeSyncRequestQuery
           ]
           []
     syncRequestDeletedItems <-
-      M.fromList . map unmakeDeletedClientThing
+      M.fromList . map (unmakeDeletedClientThing . entityVal)
         <$> selectList
           [ deletedField ==. True
           ]
@@ -139,7 +140,7 @@ clientMergeSyncResponseQuery ::
   -- | How to build a synced record from a server id and a timed item
   (sid -> Timed a -> record) ->
   -- | How to read a synced record back into a server id and a timed item
-  (Entity record -> (sid, Timed a)) ->
+  (record -> (sid, Timed a)) ->
   -- | How to update a row with new data
   --
   -- You only need to perform the updates that have anything to do with the data to sync.
@@ -188,7 +189,7 @@ clientSyncProcessor ::
   -- | How to build a synced record from a server id and a timed item
   (sid -> Timed a -> record) ->
   -- | How to read a synced record back into a server id and a timed item
-  (Entity record -> (sid, Timed a)) ->
+  (record -> (sid, Timed a)) ->
   -- | How to update a row with new data
   --
   -- You only need to perform the updates that have anything to do with the data to sync.
@@ -205,7 +206,7 @@ clientSyncProcessor
   recordUpdates = ClientSyncProcessor {..}
     where
       clientSyncProcessorQuerySyncedButChangedValues :: Set sid -> SqlPersistT m (Map sid (Timed a))
-      clientSyncProcessorQuerySyncedButChangedValues si = fmap (M.fromList . map unmakeSyncedClientThing . catMaybes) $ forM (S.toList si) $ \sid ->
+      clientSyncProcessorQuerySyncedButChangedValues si = fmap (M.fromList . map (\(Entity _ r) -> unmakeSyncedClientThing r) . catMaybes) $ forM (S.toList si) $ \sid ->
         selectFirst
           [ serverIdField ==. Just sid,
             serverTimeField !=. Nothing,
@@ -346,7 +347,7 @@ serverProcessSyncQuery ::
   -- Use this if you want per-user syncing
   [Filter record] ->
   -- | How to load an item from the database
-  (Entity record -> (Key record, Timed a)) ->
+  (record -> Timed a) ->
   -- | How to add an item in the database with initial server time
   (a -> record) ->
   -- | How to update a record given new data
@@ -382,7 +383,7 @@ serverSyncProcessor ::
   -- Use this if you want per-user syncing
   [Filter record] ->
   -- | How to load an item from the database
-  (Entity record -> (Key record, Timed a)) ->
+  (record -> Timed a) ->
   -- | How to add an item in the database with initial server time
   (a -> record) ->
   -- | How to update a record given new data
@@ -396,7 +397,7 @@ serverSyncProcessor
   recordUpdates =
     ServerSyncProcessor {..} :: ServerSyncProcessor cid (Key record) a (SqlPersistT m)
     where
-      serverSyncProcessorRead = M.fromList . map unmakeFunc <$> selectList filters []
+      serverSyncProcessorRead = M.fromList . map (\(Entity i r) -> (i, unmakeFunc r)) <$> selectList filters []
       serverSyncProcessorAddItem = insert . makeFunc
       serverSyncProcessorChangeItem si st a = update si $ (serverTimeField =. st) : recordUpdates a
       serverSyncProcessorDeleteItem = delete
