@@ -121,6 +121,7 @@ clientMakeSyncRequestQuery
           []
     pure SyncRequest {..}
 
+-- Merge a sync response
 clientMergeSyncResponseQuery ::
   forall record sid a m.
   ( Ord sid,
