@@ -109,8 +109,8 @@ clientMergeSyncResponseThingQuery =
     unmakeSyncedClientThing
     clientThingRecordUpdates
 
-unmakeUnsyncedClientThing :: Entity ClientThing -> (ClientThingId, Thing)
-unmakeUnsyncedClientThing (Entity cid ClientThing {..}) = (cid, Thing {thingNumber = clientThingNumber})
+unmakeUnsyncedClientThing :: ClientThing -> Thing
+unmakeUnsyncedClientThing ClientThing {..} = Thing {thingNumber = clientThingNumber}
 
 makeUnsyncedClientThing :: Thing -> ClientThing
 makeUnsyncedClientThing Thing {..} =
@@ -122,8 +122,8 @@ makeUnsyncedClientThing Thing {..} =
       clientThingServerTime = Nothing
     }
 
-unmakeSyncedClientThing :: Entity ClientThing -> (ServerThingId, Timed Thing)
-unmakeSyncedClientThing (Entity _ ClientThing {..}) =
+unmakeSyncedClientThing :: ClientThing -> (ServerThingId, Timed Thing)
+unmakeSyncedClientThing ClientThing {..} =
   ( fromJust clientThingServerId,
     Timed
       { timedValue = Thing {thingNumber = clientThingNumber},
@@ -151,8 +151,8 @@ makeSyncedButChangedClientThing sid (Timed Thing {..} st) =
       clientThingDeleted = False
     }
 
-unmakeDeletedClientThing :: Entity ClientThing -> (ServerThingId, ServerTime)
-unmakeDeletedClientThing (Entity _ ClientThing {..}) =
+unmakeDeletedClientThing :: ClientThing -> (ServerThingId, ServerTime)
+unmakeDeletedClientThing ClientThing {..} =
   (fromJust clientThingServerId, fromJust clientThingServerTime)
 
 makeDeletedClientThing :: ServerThingId -> ServerTime -> ClientThing

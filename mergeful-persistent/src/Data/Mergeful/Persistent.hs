@@ -294,43 +294,50 @@ clientGetStoreQuery ::
   EntityField record (Maybe ServerTime) ->
   EntityField record Bool ->
   EntityField record Bool ->
-  (Entity record -> (Key record, a)) ->
-  (Entity record -> (sid, Timed a)) ->
-  (Entity record -> (sid, ServerTime)) ->
+  (record -> a) ->
+  (record -> (sid, Timed a)) ->
+  (record -> (sid, ServerTime)) ->
   SqlPersistT m (ClientStore (Key record) sid a)
-clientGetStoreQuery serverIdField serverTimeField changedField deletedField unmakeUnsyncedClientThing unmakeSyncedClientThing unmakeDeletedClientThing = do
-  clientStoreAddedItems <-
-    M.fromList . map unmakeUnsyncedClientThing
-      <$> selectList
-        [ serverIdField ==. Nothing,
-          serverTimeField ==. Nothing
-        ]
-        []
-  clientStoreSyncedItems <-
-    M.fromList . map unmakeSyncedClientThing
-      <$> selectList
-        [ serverIdField !=. Nothing,
-          serverTimeField !=. Nothing,
-          changedField ==. False,
-          deletedField ==. False
-        ]
-        []
-  clientStoreSyncedButChangedItems <-
-    M.fromList . map unmakeSyncedClientThing
-      <$> selectList
-        [ serverIdField !=. Nothing,
-          serverTimeField !=. Nothing,
-          changedField ==. True,
-          deletedField ==. False
-        ]
-        []
-  clientStoreDeletedItems <-
-    M.fromList . map unmakeDeletedClientThing
-      <$> selectList
-        [ deletedField ==. True
-        ]
-        []
-  pure ClientStore {..}
+clientGetStoreQuery
+  serverIdField
+  serverTimeField
+  changedField
+  deletedField
+  unmakeUnsyncedClientThing
+  unmakeSyncedClientThing
+  unmakeDeletedClientThing = do
+    clientStoreAddedItems <-
+      M.fromList . map (\(Entity cid cr) -> (cid, unmakeUnsyncedClientThing cr))
+        <$> selectList
+          [ serverIdField ==. Nothing,
+            serverTimeField ==. Nothing
+          ]
+          []
+    clientStoreSyncedItems <-
+      M.fromList . map (unmakeSyncedClientThing . entityVal)
+        <$> selectList
+          [ serverIdField !=. Nothing,
+            serverTimeField !=. Nothing,
+            changedField ==. False,
+            deletedField ==. False
+          ]
+          []
+    clientStoreSyncedButChangedItems <-
+      M.fromList . map (unmakeSyncedClientThing . entityVal)
+        <$> selectList
+          [ serverIdField !=. Nothing,
+            serverTimeField !=. Nothing,
+            changedField ==. True,
+            deletedField ==. False
+          ]
+          []
+    clientStoreDeletedItems <-
+      M.fromList . map (unmakeDeletedClientThing . entityVal)
+        <$> selectList
+          [ deletedField ==. True
+          ]
+          []
+    pure ClientStore {..}
 
 -- | Process a sync request on the server side
 serverProcessSyncQuery ::

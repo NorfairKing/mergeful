@@ -55,13 +55,13 @@ setupServerThingQuery :: ServerStore ServerThingId Thing -> SqlPersistT IO ()
 setupServerThingQuery = setupServerQuery serverUnmakeThing
 
 serverGetStoreThingQuery :: SqlPersistT IO (ServerStore ServerThingId Thing)
-serverGetStoreThingQuery = serverGetStoreQuery serverMakeThing
+serverGetStoreThingQuery = serverGetStoreQuery (\(Entity sid sr) -> (sid, serverMakeThing sr))
 
 serverProcessSyncThingQuery :: forall ci. Ord ci => SyncRequest ci ServerThingId Thing -> SqlPersistT IO (SyncResponse ci ServerThingId Thing)
 serverProcessSyncThingQuery = serverProcessSyncQuery ServerThingTime [] serverMakeThing thingToServer serverRecordUpdates
 
-serverMakeThing :: Entity ServerThing -> (ServerThingId, Timed Thing)
-serverMakeThing (Entity sid ServerThing {..}) = (sid, Timed {timedValue = Thing {thingNumber = serverThingNumber}, timedTime = serverThingTime})
+serverMakeThing :: ServerThing -> Timed Thing
+serverMakeThing ServerThing {..} = Timed {timedValue = Thing {thingNumber = serverThingNumber}, timedTime = serverThingTime}
 
 serverUnmakeThing :: ServerThingId -> Timed Thing -> Entity ServerThing
 serverUnmakeThing sid Timed {..} = Entity sid $ ServerThing {serverThingNumber = thingNumber timedValue, serverThingTime = timedTime}
