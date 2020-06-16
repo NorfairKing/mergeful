@@ -69,5 +69,5 @@ serverUnmakeThing sid Timed {..} = Entity sid $ ServerThing {serverThingNumber =
 serverRecordUpdates :: Thing -> [Update ServerThing]
 serverRecordUpdates Thing {..} = [ServerThingNumber =. thingNumber]
 
-thingToServer :: Thing -> ServerThing
-thingToServer Thing {..} = ServerThing {serverThingTime = initialServerTime, serverThingNumber = thingNumber}
+thingToServer :: cid -> Thing -> ServerThing
+thingToServer _ Thing {..} = ServerThing {serverThingTime = initialServerTime, serverThingNumber = thingNumber}

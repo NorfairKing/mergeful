@@ -814,7 +814,7 @@ data ServerSyncProcessor ci si a m
       { -- | Read all items
         serverSyncProcessorRead :: !(m (Map si (Timed a))),
         -- | Add an item with 'initialServerTime'
-        serverSyncProcessorAddItem :: !(a -> m si),
+        serverSyncProcessorAddItem :: !(ci -> a -> m si),
         -- | Update an item
         serverSyncProcessorChangeItem :: !(si -> ServerTime -> a -> m ()),
         -- | Delete an item
@@ -872,8 +872,8 @@ processServerSyncCustom ::
 processServerSyncCustom ServerSyncProcessor {..} SyncRequest {..} = do
   serverItems <- serverSyncProcessorRead
   -- A: CA (generate a new identifier)
-  syncResponseClientAdded <- forM syncRequestNewItems $ \a -> do
-    si <- serverSyncProcessorAddItem a
+  syncResponseClientAdded <- flip M.traverseWithKey syncRequestNewItems $ \cid a -> do
+    si <- serverSyncProcessorAddItem cid a
     pure $ ClientAddition {clientAdditionId = si, clientAdditionServerTime = initialServerTime}
   -- C:
   let decideOnSynced tup@(sc, sd) (si, ct) =
@@ -945,7 +945,7 @@ pureServerSyncProcessor ::
 pureServerSyncProcessor genId = ServerSyncProcessor {..}
   where
     serverSyncProcessorRead = gets serverStoreItems
-    serverSyncProcessorAddItem a = do
+    serverSyncProcessorAddItem _ a = do
       i <- lift genId
       modify (\(ServerStore m) -> ServerStore (M.insert i (Timed a initialServerTime) m))
       pure i

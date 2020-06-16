@@ -357,7 +357,7 @@ serverProcessSyncQuery ::
   -- | How to load an item from the database
   (record -> Timed a) ->
   -- | How to add an item in the database with initial server time
-  (a -> record) ->
+  (cid -> a -> record) ->
   -- | How to update a record given new data
   (a -> [Update record]) ->
   -- | A sync request
@@ -393,7 +393,7 @@ serverSyncProcessor ::
   -- | How to load an item from the database
   (record -> Timed a) ->
   -- | How to add an item in the database with initial server time
-  (a -> record) ->
+  (cid -> a -> record) ->
   -- | How to update a record given new data
   (a -> [Update record]) ->
   ServerSyncProcessor cid (Key record) a (SqlPersistT m)
@@ -406,7 +406,7 @@ serverSyncProcessor
     ServerSyncProcessor {..} :: ServerSyncProcessor cid (Key record) a (SqlPersistT m)
     where
       serverSyncProcessorRead = M.fromList . map (\(Entity i r) -> (i, unmakeFunc r)) <$> selectList filters []
-      serverSyncProcessorAddItem = insert . makeFunc
+      serverSyncProcessorAddItem cid a = insert $ makeFunc cid a
       serverSyncProcessorChangeItem si st a = update si $ (serverTimeField =. st) : recordUpdates a
       serverSyncProcessorDeleteItem = delete
 
@@ -434,7 +434,7 @@ serverProcessSyncWithCustomIdQuery ::
   -- | How to load an item from the database
   (record -> (sid, Timed a)) ->
   -- | How to add an item in the database with initial server time
-  (sid -> a -> record) ->
+  (cid -> sid -> a -> record) ->
   -- | How to update a record given new data
   (a -> [Update record]) ->
   -- | A sync request
@@ -479,7 +479,7 @@ serverSyncWithCustomIdProcessor ::
   -- | How to load an item from the database
   (record -> (sid, Timed a)) ->
   -- | How to add an item in the database with 'initialServerTime'
-  (sid -> a -> record) ->
+  (cid -> sid -> a -> record) ->
   -- | How to update a record given new data
   (a -> [Update record]) ->
   ServerSyncProcessor cid sid a (SqlPersistT m)
@@ -493,9 +493,9 @@ serverSyncWithCustomIdProcessor
   recordUpdates = ServerSyncProcessor {..} :: ServerSyncProcessor cid sid a (SqlPersistT m)
     where
       serverSyncProcessorRead = M.fromList . map (\(Entity _ record) -> unmakeFunc record) <$> selectList filters []
-      serverSyncProcessorAddItem a = do
+      serverSyncProcessorAddItem cid a = do
         uuid <- uuidGen
-        insert_ $ makeFunc uuid a
+        insert_ $ makeFunc cid uuid a
         pure uuid
       serverSyncProcessorChangeItem si st a = updateWhere [idField ==. si] $ (serverTimeField =. st) : recordUpdates a
       serverSyncProcessorDeleteItem si = deleteWhere [idField ==. si]
