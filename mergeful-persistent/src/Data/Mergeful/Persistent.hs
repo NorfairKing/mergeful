@@ -406,7 +406,7 @@ serverSyncProcessor
     ServerSyncProcessor {..} :: ServerSyncProcessor cid (Key record) a (SqlPersistT m)
     where
       serverSyncProcessorRead = M.fromList . map (\(Entity i r) -> (i, unmakeFunc r)) <$> selectList filters []
-      serverSyncProcessorAddItem cid a = insert $ makeFunc cid a
+      serverSyncProcessorAddItem cid a = fmap Just $ insert $ makeFunc cid a
       serverSyncProcessorChangeItem si st a = update si $ (serverTimeField =. st) : recordUpdates a
       serverSyncProcessorDeleteItem = delete
 
@@ -496,7 +496,7 @@ serverSyncWithCustomIdProcessor
       serverSyncProcessorAddItem cid a = do
         uuid <- uuidGen
         insert_ $ makeFunc cid uuid a
-        pure uuid
+        pure (Just uuid)
       serverSyncProcessorChangeItem si st a = updateWhere [idField ==. si] $ (serverTimeField =. st) : recordUpdates a
       serverSyncProcessorDeleteItem si = deleteWhere [idField ==. si]
 

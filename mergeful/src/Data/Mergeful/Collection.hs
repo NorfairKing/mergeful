@@ -813,8 +813,8 @@ data ServerSyncProcessor ci si a m
   = ServerSyncProcessor
       { -- | Read all items
         serverSyncProcessorRead :: !(m (Map si (Timed a))),
-        -- | Add an item with 'initialServerTime'
-        serverSyncProcessorAddItem :: !(ci -> a -> m si),
+        -- | Add an item with 'initialServerTime', can fail.
+        serverSyncProcessorAddItem :: !(ci -> a -> m (Maybe si)),
         -- | Update an item
         serverSyncProcessorChangeItem :: !(si -> ServerTime -> a -> m ()),
         -- | Delete an item
@@ -872,9 +872,9 @@ processServerSyncCustom ::
 processServerSyncCustom ServerSyncProcessor {..} SyncRequest {..} = do
   serverItems <- serverSyncProcessorRead
   -- A: CA (generate a new identifier)
-  syncResponseClientAdded <- flip M.traverseWithKey syncRequestNewItems $ \cid a -> do
-    si <- serverSyncProcessorAddItem cid a
-    pure $ ClientAddition {clientAdditionId = si, clientAdditionServerTime = initialServerTime}
+  syncResponseClientAdded <- fmap (M.mapMaybe id) $ flip M.traverseWithKey syncRequestNewItems $ \cid a -> do
+    msi <- serverSyncProcessorAddItem cid a
+    pure $ (\si -> ClientAddition {clientAdditionId = si, clientAdditionServerTime = initialServerTime}) <$> (msi :: Maybe si)
   -- C:
   let decideOnSynced tup@(sc, sd) (si, ct) =
         case M.lookup si serverItems of
@@ -948,7 +948,7 @@ pureServerSyncProcessor genId = ServerSyncProcessor {..}
     serverSyncProcessorAddItem _ a = do
       i <- lift genId
       modify (\(ServerStore m) -> ServerStore (M.insert i (Timed a initialServerTime) m))
-      pure i
+      pure (Just i) -- Always succeed
     serverSyncProcessorChangeItem si st a =
       modify
         ( \(ServerStore m) ->
