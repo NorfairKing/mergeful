@@ -637,11 +637,18 @@ pureClientSyncProcessor =
               let leftovers = mergeDeletedItems (clientStoreDeletedItems cs) s
                in cs {clientStoreDeletedItems = leftovers}
           ),
-      clientSyncProcessorSyncMergedConflict = \resolved ->
+      clientSyncProcessorSyncLocalKeptConflicts = \_ -> pure (),
+      clientSyncProcessorSyncMergedConflicts = \resolved ->
         modify
           ( \cs ->
               let newSyncedButChanged = M.union resolved (clientStoreSyncedButChangedItems cs)
                in cs {clientStoreSyncedButChangedItems = newSyncedButChanged, clientStoreSyncedItems = clientStoreSyncedItems cs `M.difference` newSyncedButChanged}
+          ),
+      clientSyncProcessorSyncRemoteTakenConflicts = \m ->
+        modify
+          ( \cs ->
+              let newSynced = m `M.union` clientStoreSyncedItems cs
+               in cs {clientStoreSyncedItems = newSynced, clientStoreSyncedButChangedItems = clientStoreSyncedButChangedItems cs `M.difference` newSynced}
           ),
       clientSyncProcessorSyncServerAdded = \m ->
         modify (\cs -> cs {clientStoreSyncedItems = m `M.union` clientStoreSyncedItems cs}),
@@ -715,11 +722,21 @@ data ClientSyncProcessor ci si a (m :: * -> *)
         -- | Complete deletions that were acknowledged by the server
         -- This means deleting these tombstoned items entirely
         clientSyncProcessorSyncClientDeleted :: !(Set si -> m ()),
+        -- | Deal with the items for which no conflict was resolved.
+        --
+        -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
+        clientSyncProcessorSyncLocalKeptConflicts :: !(Map si (Timed a) -> m ()),
         -- | Store the items that were in a conflict but the conflict was resolved correctly.
         -- These items should be marked as changed.
-        clientSyncProcessorSyncMergedConflict :: !(Map si (Timed a) -> m ()),
+        clientSyncProcessorSyncMergedConflicts :: !(Map si (Timed a) -> m ()),
+        -- | Store the items that were in a conflict but the client will take the remote values
+        -- These items should be marked as unchanged.
+        clientSyncProcessorSyncRemoteTakenConflicts :: !(Map si (Timed a) -> m ()),
+        -- | Store the items that the server added
         clientSyncProcessorSyncServerAdded :: !(Map si (Timed a) -> m ()),
+        -- | Store the items that the server changed
         clientSyncProcessorSyncServerChanged :: !(Map si (Timed a) -> m ()),
+        -- | Store the items that the server deleted
         clientSyncProcessorSyncServerDeleted :: !(Set si -> m ())
       }
   deriving (Generic)
@@ -731,15 +748,17 @@ mergeSyncResponseCustom ItemMergeStrategy {..} ClientSyncProcessor {..} SyncResp
   -- Every change conflict, unless the client item is kept, needs to be updated
   -- The unresolved conflicts don't need to be updated.
   clientChangeConflicts <- clientSyncProcessorQuerySyncedButChangedValues $ M.keysSet syncResponseConflicts
-  let (_, mergedChangeConflicts, resolvedChangeConflicts) = mergeSyncedButChangedConflicts itemMergeStrategyMergeChangeConflict clientChangeConflicts syncResponseConflicts
+  let (unresolvedChangeConflicts, mergedChangeConflicts, resolvedChangeConflicts) = mergeSyncedButChangedConflicts itemMergeStrategyMergeChangeConflict clientChangeConflicts syncResponseConflicts
   -- Every served deleted conflict needs to be deleted, if the sync processor says so
   clientServerDeletedConflicts <- clientSyncProcessorQuerySyncedButChangedValues syncResponseConflictsServerDeleted
   let resolvedServerDeletedConflicts = mergeServerDeletedConflicts itemMergeStrategyMergeServerDeletedConflict clientServerDeletedConflicts
   -- The order here matters.
   clientSyncProcessorSyncServerAdded $ M.union syncResponseServerAdded resolvedClientDeletedConflicts
-  clientSyncProcessorSyncServerChanged $ M.union syncResponseServerChanged resolvedChangeConflicts
+  clientSyncProcessorSyncServerChanged syncResponseServerChanged
   clientSyncProcessorSyncServerDeleted $ S.union syncResponseServerDeleted resolvedServerDeletedConflicts
-  clientSyncProcessorSyncMergedConflict mergedChangeConflicts
+  clientSyncProcessorSyncRemoteTakenConflicts resolvedChangeConflicts
+  clientSyncProcessorSyncMergedConflicts mergedChangeConflicts
+  clientSyncProcessorSyncLocalKeptConflicts unresolvedChangeConflicts
   clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
   clientSyncProcessorSyncClientChanged syncResponseClientChanged
   clientSyncProcessorSyncClientAdded syncResponseClientAdded

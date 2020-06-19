@@ -232,12 +232,22 @@ clientSyncProcessor
       clientSyncProcessorSyncClientDeleted :: Set sid -> SqlPersistT m ()
       clientSyncProcessorSyncClientDeleted s = forM_ (S.toList s) $ \sid ->
         deleteWhere [serverIdField ==. Just sid]
-      clientSyncProcessorSyncMergedConflict :: Map sid (Timed a) -> SqlPersistT m ()
-      clientSyncProcessorSyncMergedConflict m = forM_ (M.toList m) $ \(sid, Timed a st) ->
+      clientSyncProcessorSyncLocalKeptConflicts :: Map sid (Timed a) -> SqlPersistT m ()
+      clientSyncProcessorSyncLocalKeptConflicts _ = pure ()
+      clientSyncProcessorSyncMergedConflicts :: Map sid (Timed a) -> SqlPersistT m ()
+      clientSyncProcessorSyncMergedConflicts m = forM_ (M.toList m) $ \(sid, Timed a st) ->
         updateWhere
           [serverIdField ==. Just sid]
           $ [ serverTimeField =. Just st,
               changedField =. True
+            ]
+            ++ recordUpdates a
+      clientSyncProcessorSyncRemoteTakenConflicts :: Map sid (Timed a) -> SqlPersistT m ()
+      clientSyncProcessorSyncRemoteTakenConflicts m = forM_ (M.toList m) $ \(sid, Timed a st) -> do
+        updateWhere
+          [serverIdField ==. Just sid]
+          $ [ serverTimeField =. Just st,
+              changedField =. False
             ]
             ++ recordUpdates a
       clientSyncProcessorSyncServerAdded :: Map sid (Timed a) -> SqlPersistT m ()
