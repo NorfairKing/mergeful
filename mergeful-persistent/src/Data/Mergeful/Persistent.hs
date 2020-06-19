@@ -232,24 +232,26 @@ clientSyncProcessor
       clientSyncProcessorSyncClientDeleted :: Set sid -> SqlPersistT m ()
       clientSyncProcessorSyncClientDeleted s = forM_ (S.toList s) $ \sid ->
         deleteWhere [serverIdField ==. Just sid]
-      clientSyncProcessorSyncLocalKeptConflicts :: Map sid (Timed a) -> SqlPersistT m ()
-      clientSyncProcessorSyncLocalKeptConflicts _ = pure ()
-      clientSyncProcessorSyncMergedConflicts :: Map sid (Timed a) -> SqlPersistT m ()
-      clientSyncProcessorSyncMergedConflicts m = forM_ (M.toList m) $ \(sid, Timed a st) ->
+      clientSyncProcessorSyncChangeConflictKeepLocal :: Map sid (Timed a) -> SqlPersistT m ()
+      clientSyncProcessorSyncChangeConflictKeepLocal _ = pure ()
+      clientSyncProcessorSyncChangeConflictMerged :: Map sid (Timed a) -> SqlPersistT m ()
+      clientSyncProcessorSyncChangeConflictMerged m = forM_ (M.toList m) $ \(sid, Timed a st) ->
         updateWhere
           [serverIdField ==. Just sid]
           $ [ serverTimeField =. Just st,
               changedField =. True
             ]
             ++ recordUpdates a
-      clientSyncProcessorSyncRemoteTakenConflicts :: Map sid (Timed a) -> SqlPersistT m ()
-      clientSyncProcessorSyncRemoteTakenConflicts m = forM_ (M.toList m) $ \(sid, Timed a st) -> do
-        updateWhere
-          [serverIdField ==. Just sid]
-          $ [ serverTimeField =. Just st,
-              changedField =. False
-            ]
-            ++ recordUpdates a
+      clientSyncProcessorSyncChangeConflictTakeRemote :: Map sid (Timed a) -> SqlPersistT m ()
+      clientSyncProcessorSyncChangeConflictTakeRemote = clientSyncProcessorSyncServerChanged
+      clientSyncProcessorSyncClientDeletedConflictTakeRemoteChanged :: Map sid (Timed a) -> SqlPersistT m ()
+      clientSyncProcessorSyncClientDeletedConflictTakeRemoteChanged = clientSyncProcessorSyncServerAdded
+      clientSyncProcessorSyncClientDeletedConflictStayDeleted :: Map sid (Timed a) -> SqlPersistT m ()
+      clientSyncProcessorSyncClientDeletedConflictStayDeleted _ = pure ()
+      clientSyncProcessorSyncServerDeletedConflictKeepLocalChange :: Set si -> SqlPersistT m ()
+      clientSyncProcessorSyncServerDeletedConflictKeepLocalChange _ = pure ()
+      clientSyncProcessorSyncServerDeletedConflictDelete :: Set sid -> SqlPersistT m ()
+      clientSyncProcessorSyncServerDeletedConflictDelete = clientSyncProcessorSyncServerDeleted
       clientSyncProcessorSyncServerAdded :: Map sid (Timed a) -> SqlPersistT m ()
       clientSyncProcessorSyncServerAdded m =
         insertMany_ $ map (uncurry makeSyncedClientThing) (M.toList m)

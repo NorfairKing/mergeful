@@ -637,18 +637,31 @@ pureClientSyncProcessor =
               let leftovers = mergeDeletedItems (clientStoreDeletedItems cs) s
                in cs {clientStoreDeletedItems = leftovers}
           ),
-      clientSyncProcessorSyncLocalKeptConflicts = \_ -> pure (),
-      clientSyncProcessorSyncMergedConflicts = \resolved ->
+      clientSyncProcessorSyncChangeConflictKeepLocal = \_ -> pure (),
+      clientSyncProcessorSyncChangeConflictMerged = \resolved ->
         modify
           ( \cs ->
               let newSyncedButChanged = M.union resolved (clientStoreSyncedButChangedItems cs)
                in cs {clientStoreSyncedButChangedItems = newSyncedButChanged, clientStoreSyncedItems = clientStoreSyncedItems cs `M.difference` newSyncedButChanged}
           ),
-      clientSyncProcessorSyncRemoteTakenConflicts = \m ->
+      clientSyncProcessorSyncChangeConflictTakeRemote = \m ->
         modify
           ( \cs ->
               let newSynced = m `M.union` clientStoreSyncedItems cs
                in cs {clientStoreSyncedItems = newSynced, clientStoreSyncedButChangedItems = clientStoreSyncedButChangedItems cs `M.difference` newSynced}
+          ),
+      clientSyncProcessorSyncClientDeletedConflictTakeRemoteChanged = \m ->
+        modify (\cs -> cs {clientStoreSyncedItems = m `M.union` clientStoreSyncedItems cs}),
+      clientSyncProcessorSyncClientDeletedConflictStayDeleted = \_ -> pure (),
+      clientSyncProcessorSyncServerDeletedConflictKeepLocalChange = \_ -> pure (),
+      clientSyncProcessorSyncServerDeletedConflictDelete = \s ->
+        modify
+          ( \cs ->
+              let m = M.fromSet (const ()) s
+               in cs
+                    { clientStoreSyncedItems = clientStoreSyncedItems cs `M.difference` m,
+                      clientStoreSyncedButChangedItems = clientStoreSyncedButChangedItems cs `M.difference` m
+                    }
           ),
       clientSyncProcessorSyncServerAdded = \m ->
         modify (\cs -> cs {clientStoreSyncedItems = m `M.union` clientStoreSyncedItems cs}),
@@ -709,29 +722,83 @@ mergeSyncedButChangedItems local changed = M.foldlWithKey go (M.empty, M.empty) 
 mergeDeletedItems :: Ord i => Map i b -> Set i -> Map i b
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 
+-- | A processor for dealing with @SyncResponse@s on the client side.
+--
+-- It has to deal with each of the 13 cases:
+--
+-- - server
+--
+--     - added
+--     - changed
+--     - deleted
+--
+-- - client
+--
+--     - added
+--     - changed
+--     - deleted
+--
+-- - client-deleted conflict
+--
+--     - take remote
+--     - delete
+--
+-- - server-deleted conflict
+--
+--     - delete
+--     - keep local
+--
+-- - change conflict
+--
+--     - take remote
+--     - merge
+--     - keep local
+--
+-- It is a lot of work to implement one of these, so make sure to have a look at the mergeful companion packages to see if maybe there is already one for your application domain.
 data ClientSyncProcessor ci si a (m :: * -> *)
   = ClientSyncProcessor
       { -- | Get the synced values with keys in the given set
         clientSyncProcessorQuerySyncedButChangedValues :: !(Set si -> m (Map si (Timed a))),
         -- | Complete additions that were acknowledged by the server.
+        --
         -- This involves saving the server id and the server time
         clientSyncProcessorSyncClientAdded :: !(Map ci (ClientAddition si) -> m ()),
         -- | Complete changes that were acknowledged by the server
+        --
         -- This involves updating the server time
         clientSyncProcessorSyncClientChanged :: !(Map si ServerTime -> m ()),
         -- | Complete deletions that were acknowledged by the server
+        --
         -- This means deleting these tombstoned items entirely
         clientSyncProcessorSyncClientDeleted :: !(Set si -> m ()),
+        -- | Re-create the items that need to be created locally as a result of a 'client deleted' conflict that has been merged by taking the remote value.
+        --
+        -- You can likely implement this in the same way as @clientSyncProcessorSyncServerAdded@.
+        clientSyncProcessorSyncClientDeletedConflictTakeRemoteChanged :: !(Map si (Timed a) -> m ()),
+        -- | Leave the items deleted that need to be left deleted as a result of a 'client deleted' conflict that has been merged by leaving it deleted.
+        --
+        -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
+        clientSyncProcessorSyncClientDeletedConflictStayDeleted :: !(Map si (Timed a) -> m ()),
+        -- | Leave the items undeleted that need to be left deleted as a result of a 'server deleted' conflict that has been merged by leaving it undeleted.
+        --
+        -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
+        clientSyncProcessorSyncServerDeletedConflictKeepLocalChange :: !(Set si -> m ()),
+        -- | Delete the items that need to be deleted locally as a result of a 'server deleted' conflict that has been merged by deleting the local value.
+        --
+        -- You can likely implement this in the same way as @clientSyncProcessorSyncServerDeleted@.
+        clientSyncProcessorSyncServerDeletedConflictDelete :: !(Set si -> m ()),
         -- | Deal with the items for which no conflict was resolved.
         --
         -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
-        clientSyncProcessorSyncLocalKeptConflicts :: !(Map si (Timed a) -> m ()),
+        clientSyncProcessorSyncChangeConflictKeepLocal :: !(Map si (Timed a) -> m ()),
         -- | Store the items that were in a conflict but the conflict was resolved correctly.
         -- These items should be marked as changed.
-        clientSyncProcessorSyncMergedConflicts :: !(Map si (Timed a) -> m ()),
+        clientSyncProcessorSyncChangeConflictMerged :: !(Map si (Timed a) -> m ()),
         -- | Store the items that were in a conflict but the client will take the remote values
         -- These items should be marked as unchanged.
-        clientSyncProcessorSyncRemoteTakenConflicts :: !(Map si (Timed a) -> m ()),
+        --
+        -- You can likely implement this in the same way as @clientSyncProcessorSyncServerChanged@.
+        clientSyncProcessorSyncChangeConflictTakeRemote :: !(Map si (Timed a) -> m ()),
         -- | Store the items that the server added
         clientSyncProcessorSyncServerAdded :: !(Map si (Timed a) -> m ()),
         -- | Store the items that the server changed
@@ -756,9 +823,9 @@ mergeSyncResponseCustom ItemMergeStrategy {..} ClientSyncProcessor {..} SyncResp
   clientSyncProcessorSyncServerAdded $ M.union syncResponseServerAdded resolvedClientDeletedConflicts
   clientSyncProcessorSyncServerChanged syncResponseServerChanged
   clientSyncProcessorSyncServerDeleted $ S.union syncResponseServerDeleted resolvedServerDeletedConflicts
-  clientSyncProcessorSyncRemoteTakenConflicts resolvedChangeConflicts
-  clientSyncProcessorSyncMergedConflicts mergedChangeConflicts
-  clientSyncProcessorSyncLocalKeptConflicts unresolvedChangeConflicts
+  clientSyncProcessorSyncChangeConflictTakeRemote resolvedChangeConflicts
+  clientSyncProcessorSyncChangeConflictMerged mergedChangeConflicts
+  clientSyncProcessorSyncChangeConflictKeepLocal unresolvedChangeConflicts
   clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
   clientSyncProcessorSyncClientChanged syncResponseClientChanged
   clientSyncProcessorSyncClientAdded syncResponseClientAdded
