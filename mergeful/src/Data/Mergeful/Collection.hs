@@ -58,7 +58,7 @@ module Data.Mergeful.Collection
     changeItemInClientStore,
     deleteItemFromClientStore,
 
-    -- ** Maxing a sync request
+    -- ** Making a sync request
     SyncRequest (..),
     initialSyncRequest,
     makeSyncRequest,
@@ -811,21 +811,25 @@ data ClientSyncProcessor ci si a (m :: * -> *)
 mergeSyncResponseCustom :: (Ord si, Monad m) => ItemMergeStrategy a -> ClientSyncProcessor ci si a m -> SyncResponse ci si a -> m ()
 mergeSyncResponseCustom ItemMergeStrategy {..} ClientSyncProcessor {..} SyncResponse {..} = do
   -- Every client deleted conflict needs to be added, if the sync processor says so
-  let resolvedClientDeletedConflicts = mergeClientDeletedConflicts itemMergeStrategyMergeClientDeletedConflict syncResponseConflictsClientDeleted
+  let (remoteChangeToTake, remoteChangesToIgnore) = mergeClientDeletedConflicts itemMergeStrategyMergeClientDeletedConflict syncResponseConflictsClientDeleted
   -- Every change conflict, unless the client item is kept, needs to be updated
   -- The unresolved conflicts don't need to be updated.
   clientChangeConflicts <- clientSyncProcessorQuerySyncedButChangedValues $ M.keysSet syncResponseConflicts
   let (unresolvedChangeConflicts, mergedChangeConflicts, resolvedChangeConflicts) = mergeSyncedButChangedConflicts itemMergeStrategyMergeChangeConflict clientChangeConflicts syncResponseConflicts
   -- Every served deleted conflict needs to be deleted, if the sync processor says so
   clientServerDeletedConflicts <- clientSyncProcessorQuerySyncedButChangedValues syncResponseConflictsServerDeleted
-  let resolvedServerDeletedConflicts = mergeServerDeletedConflicts itemMergeStrategyMergeServerDeletedConflict clientServerDeletedConflicts
+  let (localChangesToDelete, localChangesToBeKept) = mergeServerDeletedConflicts itemMergeStrategyMergeServerDeletedConflict clientServerDeletedConflicts
   -- The order here matters.
-  clientSyncProcessorSyncServerAdded $ M.union syncResponseServerAdded resolvedClientDeletedConflicts
+  clientSyncProcessorSyncServerAdded syncResponseServerAdded
   clientSyncProcessorSyncServerChanged syncResponseServerChanged
-  clientSyncProcessorSyncServerDeleted $ S.union syncResponseServerDeleted resolvedServerDeletedConflicts
+  clientSyncProcessorSyncServerDeleted syncResponseServerDeleted
   clientSyncProcessorSyncChangeConflictTakeRemote resolvedChangeConflicts
   clientSyncProcessorSyncChangeConflictMerged mergedChangeConflicts
   clientSyncProcessorSyncChangeConflictKeepLocal unresolvedChangeConflicts
+  clientSyncProcessorSyncClientDeletedConflictTakeRemoteChanged remoteChangeToTake
+  clientSyncProcessorSyncClientDeletedConflictStayDeleted remoteChangesToIgnore
+  clientSyncProcessorSyncServerDeletedConflictDelete localChangesToDelete
+  clientSyncProcessorSyncServerDeletedConflictKeepLocalChange localChangesToBeKept
   clientSyncProcessorSyncClientDeleted syncResponseClientDeleted
   clientSyncProcessorSyncClientChanged syncResponseClientChanged
   clientSyncProcessorSyncClientAdded syncResponseClientAdded
@@ -869,8 +873,8 @@ mergeClientDeletedConflicts ::
   -- | The conflicting items on the server side
   Map si (Timed a) ->
   -- | A map of items that need to be updated on the client.
-  Map si (Timed a)
-mergeClientDeletedConflicts func = M.filter $ \(Timed si _) ->
+  (Map si (Timed a), Map si (Timed a))
+mergeClientDeletedConflicts func = M.partition $ \(Timed si _) ->
   case func si of
     TakeRemoteChange -> True
     StayDeleted -> False
@@ -881,10 +885,13 @@ mergeServerDeletedConflicts ::
   -- | The conflicting items on the client side
   Map si (Timed a) ->
   -- | The result is a map of items that need to be deleted on the client.
-  Set si
-mergeServerDeletedConflicts func m = M.keysSet $ flip M.filter m $ \(Timed si _) -> case func si of
+  (Set si, Set si)
+mergeServerDeletedConflicts func m = both M.keysSet $ flip M.partition m $ \(Timed si _) -> case func si of
   KeepLocalChange -> False
   Delete -> True
+  where
+    both :: (a -> b) -> (a, a) -> (b, b)
+    both f (a1, a2) = (f a1, f a2)
 
 data Identifier ci si
   = OnlyServer si
