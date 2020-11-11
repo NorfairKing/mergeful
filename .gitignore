@@ -1,5 +1,4 @@
 .stack-work/
-*.cabal
 stack.yaml.lock
 .pre-commit-hooks
 .pre-commit-config.yaml
