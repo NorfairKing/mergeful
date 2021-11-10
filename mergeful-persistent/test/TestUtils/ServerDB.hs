@@ -27,8 +27,6 @@ newtype Thing = Thing {thingNumber :: Int}
 
 instance Validity Thing
 
-instance GenUnchecked Thing
-
 instance GenValid Thing
 
 share
@@ -48,8 +46,6 @@ ServerThing
 |]
 
 instance Validity ServerThing
-
-instance GenUnchecked ServerThing
 
 instance GenValid ServerThing
 

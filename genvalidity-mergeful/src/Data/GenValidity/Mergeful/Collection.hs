@@ -16,13 +16,9 @@ import qualified Data.Set as S
 import Data.Traversable
 import Test.QuickCheck
 
-instance GenUnchecked ClientId
-
-instance GenValid ClientId
-
-instance
-  (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
-  GenUnchecked (ClientStore ci si a)
+instance GenValid ClientId where
+  genValid = genValidStructurallyWithoutExtraChecking
+  shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
 instance
   (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
@@ -40,15 +36,9 @@ instance
       pure ClientStore {..}
   shrinkValid = shrinkValidStructurally
 
-instance (GenUnchecked si, Ord si, GenUnchecked a) => GenUnchecked (ServerStore si a)
-
 instance (GenValid si, Show si, Ord si, GenValid a) => GenValid (ServerStore si a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
-
-instance
-  (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
-  GenUnchecked (SyncRequest ci si a)
 
 instance
   (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>
@@ -66,15 +56,9 @@ instance
       pure SyncRequest {..}
   shrinkValid = shrinkValidStructurally
 
-instance GenUnchecked si => GenUnchecked (ClientAddition si)
-
 instance GenValid si => GenValid (ClientAddition si) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
-
-instance
-  (GenUnchecked ci, GenUnchecked si, Ord ci, Ord si, GenUnchecked a) =>
-  GenUnchecked (SyncResponse ci si a)
 
 instance
   (GenValid ci, GenValid si, Show ci, Show si, Ord ci, Ord si, GenValid a) =>

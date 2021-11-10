@@ -14,7 +14,7 @@ import Test.Validity.Aeson
 spec :: Spec
 spec = do
   genValidSpec @ServerTime
-  jsonSpecOnValid @ServerTime
+  jsonSpec @ServerTime
   genValidSpec @(Timed Int)
-  jsonSpecOnValid @(Timed Int)
+  jsonSpec @(Timed Int)
   describe "initialServerTime" $ it "is valid" $ shouldBeValid initialServerTime

@@ -6,13 +6,9 @@ import Data.GenValidity
 import Data.Mergeful.Timed
 import Test.QuickCheck
 
-instance GenUnchecked a => GenUnchecked (Timed a)
-
 instance GenValid a => GenValid (Timed a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
-
-instance GenUnchecked ServerTime
 
 instance GenValid ServerTime where
   genValid = ServerTime <$> arbitrary

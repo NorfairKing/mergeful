@@ -313,14 +313,14 @@ Match up by name, then use agreement on items.
 ``` haskell
   describe "processServerValueSync" $ 
     it "produces valid responses and stores" $
-      producesValidsOnValids2 (processServerValueSync @Int)
+      producesValid2 (processServerValueSync @Int)
 ```
 
 - Test suite combinators:
 
 ``` haskell
   describe "processServerValueSync" $ 
-    jsonSpecOnValid @(ValueSyncResponse Int)
+    jsonSpec @(ValueSyncResponse Int)
     mergeFunctionSpec @Int mergeSyncResponseFromServer
 ```
 
