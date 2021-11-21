@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5c04518a45f3748d42c829e645b69f607f23450b79fa96bcd6c567976b0465b7
+-- hash: 6fa4772b1b0471d8c0e21b40b48e745070c2dd44806c98ac7ee742616094b37a
 
 name:           mergeful
 version:        0.2.0.0
@@ -13,12 +13,11 @@ homepage:       https://github.com/NorfairKing/mergeful#readme
 bug-reports:    https://github.com/NorfairKing/mergeful/issues
 author:         Tom Sydney Kerckhove
 maintainer:     syd@cs-syd.eu
-copyright:      Copyright: (c) 2019-2020 Tom Sydney Kerckhove
+copyright:      Copyright: (c) 2018-2021 Tom Sydney Kerckhove
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    README.md
     CHANGELOG.md
 
 source-repository head

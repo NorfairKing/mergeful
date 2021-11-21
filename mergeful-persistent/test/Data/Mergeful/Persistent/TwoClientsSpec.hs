@@ -20,33 +20,34 @@ import TestUtils
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
 spec :: Spec
-spec = modifyMaxShrinks (const 0) $ twoClientsSpec $ do
-  describe "sanity" $ do
-    describe "setupClient & clientGetStore" $ do
-      it "roundtrips" $ \te -> forAllValid $ \cstore -> runTest te $ do
-        setupClient A cstore
-        cstore' <- clientGetStore A
-        liftIO $ cstore' `shouldBe` cstore
-    describe "setupServer & serverGetStore" $ do
-      it "roundtrips" $ \te -> forAllValid $ \sstore -> runTest te $ do
-        setupServer sstore
-        sstore' <- serverGetStore
-        liftIO $ sstore' `shouldBe` sstore
-  describe "mergeFromServerStrategy" $ do
-    let strat = mergeFromServerStrategy
-    mergeFunctionSpec strat
-    noDivergenceSpec strat
-    xdescribe "Does not hold" $ noDataLossSpec strat
-  describe "mergeFromClientStrategy" $ do
-    let strat = mergeFromClientStrategy
-    mergeFunctionSpec strat
-    noDataLossSpec strat
-    xdescribe "Does not hold" $ noDivergenceSpec strat
-  describe "mergeUsingCRDTStrategy" $ do
-    let strat = mergeUsingCRDTStrategy max
-    mergeFunctionSpec strat
-    noDataLossSpec strat
-    noDivergenceSpec strat
+spec = modifyMaxShrinks (const 0) $
+  twoClientsSpec $ do
+    describe "sanity" $ do
+      describe "setupClient & clientGetStore" $ do
+        it "roundtrips" $ \te -> forAllValid $ \cstore -> runTest te $ do
+          setupClient A cstore
+          cstore' <- clientGetStore A
+          liftIO $ cstore' `shouldBe` cstore
+      describe "setupServer & serverGetStore" $ do
+        it "roundtrips" $ \te -> forAllValid $ \sstore -> runTest te $ do
+          setupServer sstore
+          sstore' <- serverGetStore
+          liftIO $ sstore' `shouldBe` sstore
+    describe "mergeFromServerStrategy" $ do
+      let strat = mergeFromServerStrategy
+      mergeFunctionSpec strat
+      noDivergenceSpec strat
+      xdescribe "Does not hold" $ noDataLossSpec strat
+    describe "mergeFromClientStrategy" $ do
+      let strat = mergeFromClientStrategy
+      mergeFunctionSpec strat
+      noDataLossSpec strat
+      xdescribe "Does not hold" $ noDivergenceSpec strat
+    describe "mergeUsingCRDTStrategy" $ do
+      let strat = mergeUsingCRDTStrategy max
+      mergeFunctionSpec strat
+      noDataLossSpec strat
+      noDivergenceSpec strat
 
 mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 mergeFunctionSpec strat = do
@@ -305,7 +306,7 @@ mergeFunctionSpec strat = do
           lift $ do
             resp1 `shouldBe` (emptySyncResponse {syncResponseClientDeleted = M.keysSet items})
             sstore2 `shouldBe` (ServerStore {serverStoreItems = M.empty}) -- TODO will probably need some sort of tombstoning.
-                  -- Client A merges the response
+            -- Client A merges the response
           mergeFunc A resp1
           cAstore2 <- clientGetStore A
           lift $ cAstore2 `shouldBe` initialClientStore
@@ -503,12 +504,11 @@ clientMergeSyncResponse strat client = runClientDB client . clientMergeSyncRespo
 data Client = A | B
   deriving (Show, Eq)
 
-data TestEnv
-  = TestEnv
-      { testEnvServerPool :: ConnectionPool,
-        testEnvClient1Pool :: ConnectionPool,
-        testEnvClient2Pool :: ConnectionPool
-      }
+data TestEnv = TestEnv
+  { testEnvServerPool :: ConnectionPool,
+    testEnvClient1Pool :: ConnectionPool,
+    testEnvClient2Pool :: ConnectionPool
+  }
 
 twoClientsSpec :: SpecWith TestEnv -> Spec
 twoClientsSpec = around withTestEnv

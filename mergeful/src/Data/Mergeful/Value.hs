@@ -322,13 +322,13 @@ processServerValueSync sv@(ServerValue t@(Timed _ st)) sr =
   case sr of
     ValueSyncRequestKnown ct ->
       if ct >= st
-        then-- The client time is equal to the server time.
+        then -- The client time is equal to the server time.
         -- The client indicates that the item was not modified at their side.
         -- This means that the items are in sync.
         -- (Unless the server somehow modified the item but not its server time,
         -- which would beconsidered a bug.)
           (ValueSyncResponseInSync, sv)
-        else-- The client time is less than the server time
+        else -- The client time is less than the server time
         -- That means that the server has synced with another client in the meantime.
         -- Since the client indicates that the item was not modified at their side,
         -- we can just send it back to the client to have them update their version.
@@ -336,7 +336,7 @@ processServerValueSync sv@(ServerValue t@(Timed _ st)) sr =
           (ValueSyncResponseServerChanged t, sv)
     ValueSyncRequestKnownButChanged Timed {timedValue = ci, timedTime = ct} ->
       if ct >= st
-        then-- The client time is equal to the server time.
+        then -- The client time is equal to the server time.
         -- The client indicates that the item *was* modified at their side.
         -- This means that the server needs to be updated.
 
@@ -344,7 +344,7 @@ processServerValueSync sv@(ServerValue t@(Timed _ st)) sr =
            in ( ValueSyncResponseClientChanged st',
                 ServerValue (Timed {timedValue = ci, timedTime = st'})
               )
-        else-- The client time is less than the server time
+        else -- The client time is less than the server time
         -- That means that the server has synced with another client in the meantime.
         -- Since the client indicates that the item *was* modified at their side,
         -- there is a conflict.

@@ -20,30 +20,31 @@ import TestUtils
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
 spec :: Spec
-spec = modifyMaxShrinks (const 0) $ oneClientSpec $ do
-  describe "sanity" $ do
-    describe "setupClient & clientGetStore" $ do
-      it "roundtrips" $ \te -> forAllValid $ \cstore -> runTest te $ do
-        setupClient cstore
-        cstore' <- clientGetStore
-        liftIO $ cstore' `shouldBe` cstore
-    describe "setupServer & serverGetStore" $ do
-      it "roundtrips" $ \te -> forAllValid $ \sstore -> runTest te $ do
-        setupServer sstore
-        sstore' <- serverGetStore
-        liftIO $ sstore' `shouldBe` sstore
-  describe "mergeFromServerStrategy" $ do
-    let strat = mergeFromServerStrategy
-    mergeFunctionSpec strat
-    emptyResponseSpec strat
-  describe "mergeFromClientStrategy" $ do
-    let strat = mergeFromClientStrategy
-    mergeFunctionSpec strat
-    xdescribe "does not hold" $ emptyResponseSpec strat
-  describe "mergeUsingCRDTStrategy" $ do
-    let strat = mergeUsingCRDTStrategy max
-    mergeFunctionSpec strat
-    emptyResponseSpec strat
+spec = modifyMaxShrinks (const 0) $
+  oneClientSpec $ do
+    describe "sanity" $ do
+      describe "setupClient & clientGetStore" $ do
+        it "roundtrips" $ \te -> forAllValid $ \cstore -> runTest te $ do
+          setupClient cstore
+          cstore' <- clientGetStore
+          liftIO $ cstore' `shouldBe` cstore
+      describe "setupServer & serverGetStore" $ do
+        it "roundtrips" $ \te -> forAllValid $ \sstore -> runTest te $ do
+          setupServer sstore
+          sstore' <- serverGetStore
+          liftIO $ sstore' `shouldBe` sstore
+    describe "mergeFromServerStrategy" $ do
+      let strat = mergeFromServerStrategy
+      mergeFunctionSpec strat
+      emptyResponseSpec strat
+    describe "mergeFromClientStrategy" $ do
+      let strat = mergeFromClientStrategy
+      mergeFunctionSpec strat
+      xdescribe "does not hold" $ emptyResponseSpec strat
+    describe "mergeUsingCRDTStrategy" $ do
+      let strat = mergeUsingCRDTStrategy max
+      mergeFunctionSpec strat
+      emptyResponseSpec strat
 
 mergeFunctionSpec :: ItemMergeStrategy Thing -> SpecWith TestEnv
 mergeFunctionSpec strat = do
@@ -169,11 +170,10 @@ serverProcessSync = runServerDB . serverProcessSyncThingQuery
 clientMergeSyncResponse :: ItemMergeStrategy Thing -> SResp -> T ()
 clientMergeSyncResponse strat = runClientDB . clientMergeSyncResponseThingQuery strat
 
-data TestEnv
-  = TestEnv
-      { testEnvClientPool :: ConnectionPool,
-        testEnvServerPool :: ConnectionPool
-      }
+data TestEnv = TestEnv
+  { testEnvClientPool :: ConnectionPool,
+    testEnvServerPool :: ConnectionPool
+  }
 
 oneClientSpec :: SpecWith TestEnv -> Spec
 oneClientSpec = around withTestEnv

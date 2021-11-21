@@ -42,8 +42,8 @@ where
 
 import Control.Monad
 import Control.Monad.IO.Class
-import qualified Data.Map as M
 import Data.Map (Map)
+import qualified Data.Map as M
 import Data.Maybe
 import Data.Mergeful
 import Data.Set (Set)
@@ -207,14 +207,15 @@ clientSyncProcessor
   recordUpdates = ClientSyncProcessor {..}
     where
       clientSyncProcessorQuerySyncedButChangedValues :: Set sid -> SqlPersistT m (Map sid (Timed a))
-      clientSyncProcessorQuerySyncedButChangedValues si = fmap (M.fromList . map (\(Entity _ r) -> unmakeSyncedClientThing r) . catMaybes) $ forM (S.toList si) $ \sid ->
-        selectFirst
-          [ serverIdField ==. Just sid,
-            serverTimeField !=. Nothing,
-            changedField ==. True,
-            deletedField ==. False
-          ]
-          []
+      clientSyncProcessorQuerySyncedButChangedValues si = fmap (M.fromList . map (\(Entity _ r) -> unmakeSyncedClientThing r) . catMaybes) $
+        forM (S.toList si) $ \sid ->
+          selectFirst
+            [ serverIdField ==. Just sid,
+              serverTimeField !=. Nothing,
+              changedField ==. True,
+              deletedField ==. False
+            ]
+            []
       clientSyncProcessorSyncClientAdded :: Map (Key record) (ClientAddition sid) -> SqlPersistT m ()
       clientSyncProcessorSyncClientAdded m = forM_ (M.toList m) $ \(cid, ClientAddition {..}) ->
         update

@@ -379,17 +379,16 @@ mergeItemSyncResponseUsingCRDT :: (a -> a -> a) -> ClientItem a -> ItemSyncRespo
 mergeItemSyncResponseUsingCRDT = mergeItemSyncResponseUsingStrategy . mergeUsingCRDTStrategy
 
 -- | A strategy to merge conflicts for item synchronisation
-data ItemMergeStrategy a
-  = ItemMergeStrategy
-      { -- | How to merge modification conflicts
-        --
-        -- The first argument is the client item and the second argument is the server item.
-        itemMergeStrategyMergeChangeConflict :: a -> a -> ChangeConflictResolution a,
-        -- | How to merge conflicts where the client deleted an item that the server modified
-        itemMergeStrategyMergeClientDeletedConflict :: a -> ClientDeletedConflictResolution,
-        -- | How to merge conflicts where the server deleted an item that the client modified
-        itemMergeStrategyMergeServerDeletedConflict :: a -> ServerDeletedConflictResolution
-      }
+data ItemMergeStrategy a = ItemMergeStrategy
+  { -- | How to merge modification conflicts
+    --
+    -- The first argument is the client item and the second argument is the server item.
+    itemMergeStrategyMergeChangeConflict :: a -> a -> ChangeConflictResolution a,
+    -- | How to merge conflicts where the client deleted an item that the server modified
+    itemMergeStrategyMergeClientDeletedConflict :: a -> ClientDeletedConflictResolution,
+    -- | How to merge conflicts where the server deleted an item that the client modified
+    itemMergeStrategyMergeServerDeletedConflict :: a -> ServerDeletedConflictResolution
+  }
   deriving (Generic)
 
 data ChangeConflictResolution a
@@ -548,13 +547,13 @@ processServerItemSync store sr =
               (ItemSyncResponseConflict t, store)
             ItemSyncRequestKnown ct ->
               if ct >= st
-                then-- The client time is equal to the server time.
+                then -- The client time is equal to the server time.
                 -- The client indicates that the item was not modified at their side.
                 -- This means that the items are in sync.
                 -- (Unless the server somehow modified the item but not its server time,
                 -- which would beconsidered a bug.)
                   (ItemSyncResponseInSyncFull, store)
-                else-- The client time is less than the server time
+                else -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item was not modified at their side,
                 -- we can just send it back to the client to have them update their version.
@@ -565,25 +564,25 @@ processServerItemSync store sr =
                   )
             ItemSyncRequestKnownButChanged Timed {timedValue = ci, timedTime = ct} ->
               if ct >= st
-                then-- The client time is equal to the server time.
+                then -- The client time is equal to the server time.
                 -- The client indicates that the item *was* modified at their side.
                 -- This means that the server needs to be updated.
 
                   ( ItemSyncResponseClientChanged st',
                     ServerFull (Timed {timedValue = ci, timedTime = st'})
                   )
-                else-- The client time is less than the server time
+                else -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item *was* modified at their side,
                 -- there is a conflict.
                   (ItemSyncResponseConflict t, store)
             ItemSyncRequestDeletedLocally ct ->
               if ct >= st
-                then-- The client time is equal to the server time.
+                then -- The client time is equal to the server time.
                 -- The client indicates that the item was deleted on their side.
                 -- This means that the server item needs to be deleted as well.
                   (ItemSyncResponseClientDeleted, ServerEmpty)
-                else-- The client time is less than the server time
+                else -- The client time is less than the server time
                 -- That means that the server has synced with another client in the meantime.
                 -- Since the client indicates that the item was deleted at their side,
                 -- there is a conflict.

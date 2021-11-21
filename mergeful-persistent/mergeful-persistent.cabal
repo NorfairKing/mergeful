@@ -4,18 +4,21 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3a93c7f5cc8d8c7f8fef768995b9695ef70799902d4f6a50764549b8b69c1d1a
+-- hash: 5657a1667a82a170333369c773c8638a88b0180dcfb0e4bc3ca27ae41b17d8c7
 
 name:           mergeful-persistent
-version:        0.0.0.0
+version:        0.1.0.0
 synopsis:       Support for using mergeful from persistent-based databases
 homepage:       https://github.com/NorfairKing/mergeful#readme
 bug-reports:    https://github.com/NorfairKing/mergeful/issues
 author:         Tom Sydney Kerckhove
 maintainer:     syd.kerckhove@gmail.com
-copyright:      Copyright: (c) 2020 Tom Sydney Kerckhove
+copyright:      Copyright: (c) 2021 Tom Sydney Kerckhove
 license:        MIT
+license-file:   LICENSE
 build-type:     Simple
+extra-source-files:
+    CHANGELOG.md
 
 source-repository head
   type: git

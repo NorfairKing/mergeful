@@ -129,29 +129,27 @@ import GHC.Generics (Generic)
 -- | A Client-side identifier for items.
 --
 -- These only need to be unique at the client.
-newtype ClientId
-  = ClientId
-      { unClientId :: Word64
-      }
+newtype ClientId = ClientId
+  { unClientId :: Word64
+  }
   deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON, ToJSONKey, FromJSON, FromJSONKey)
 
 instance Validity ClientId
 
 instance NFData ClientId
 
-data ClientStore ci si a
-  = ClientStore
-      { -- | These items are new locally but have not been synced to the server yet.
-        clientStoreAddedItems :: Map ci a,
-        -- | These items have been synced at their respective 'ServerTime's.
-        clientStoreSyncedItems :: Map si (Timed a),
-        -- | These items have been synced at their respective 'ServerTime's
-        -- but modified locally since then.
-        clientStoreSyncedButChangedItems :: Map si (Timed a),
-        -- | These items have been deleted locally after they were synced
-        -- but the server has not been notified of that yet.
-        clientStoreDeletedItems :: Map si ServerTime
-      }
+data ClientStore ci si a = ClientStore
+  { -- | These items are new locally but have not been synced to the server yet.
+    clientStoreAddedItems :: Map ci a,
+    -- | These items have been synced at their respective 'ServerTime's.
+    clientStoreSyncedItems :: Map si (Timed a),
+    -- | These items have been synced at their respective 'ServerTime's
+    -- but modified locally since then.
+    clientStoreSyncedButChangedItems :: Map si (Timed a),
+    -- | These items have been deleted locally after they were synced
+    -- but the server has not been notified of that yet.
+    clientStoreDeletedItems :: Map si ServerTime
+  }
   deriving (Show, Eq, Generic)
 
 instance
@@ -161,13 +159,13 @@ instance
   validate cs@ClientStore {..} =
     mconcat
       [ genericValidate cs,
-        declare "There are no duplicate IDs"
-          $ distinct
-          $ concat
-            [ M.keys clientStoreSyncedItems,
-              M.keys clientStoreSyncedButChangedItems,
-              M.keys clientStoreDeletedItems
-            ]
+        declare "There are no duplicate IDs" $
+          distinct $
+            concat
+              [ M.keys clientStoreSyncedItems,
+                M.keys clientStoreSyncedButChangedItems,
+                M.keys clientStoreDeletedItems
+              ]
       ]
 
 instance (NFData ci, NFData si, NFData a) => NFData (ClientStore ci si a)
@@ -335,12 +333,11 @@ changeItemInClientStore i a cs =
 deleteItemFromClientStore :: Ord ci => ci -> ClientStore ci si a -> ClientStore ci si a
 deleteItemFromClientStore i cs = cs {clientStoreAddedItems = M.delete i (clientStoreAddedItems cs)}
 
-newtype ServerStore si a
-  = ServerStore
-      { -- | A map of items, named using an 'si', together with the 'ServerTime' at which
-        -- they were last synced.
-        serverStoreItems :: Map si (Timed a)
-      }
+newtype ServerStore si a = ServerStore
+  { -- | A map of items, named using an 'si', together with the 'ServerTime' at which
+    -- they were last synced.
+    serverStoreItems :: Map si (Timed a)
+  }
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 instance (Validity si, Show si, Ord si, Validity a) => Validity (ServerStore si a)
@@ -353,19 +350,18 @@ instance (NFData si, NFData a) => NFData (ServerStore si a)
 initialServerStore :: ServerStore si a
 initialServerStore = ServerStore {serverStoreItems = M.empty}
 
-data SyncRequest ci si a
-  = SyncRequest
-      { -- | These items are new locally but have not been synced to the server yet.
-        syncRequestNewItems :: !(Map ci a),
-        -- | These items have been synced at their respective 'ServerTime's.
-        syncRequestKnownItems :: !(Map si ServerTime),
-        -- | These items have been synced at their respective 'ServerTime's
-        -- but modified locally since then.
-        syncRequestKnownButChangedItems :: !(Map si (Timed a)),
-        -- | These items have been deleted locally after they were synced
-        -- but the server has not been notified of that yet.
-        syncRequestDeletedItems :: !(Map si ServerTime)
-      }
+data SyncRequest ci si a = SyncRequest
+  { -- | These items are new locally but have not been synced to the server yet.
+    syncRequestNewItems :: !(Map ci a),
+    -- | These items have been synced at their respective 'ServerTime's.
+    syncRequestKnownItems :: !(Map si ServerTime),
+    -- | These items have been synced at their respective 'ServerTime's
+    -- but modified locally since then.
+    syncRequestKnownButChangedItems :: !(Map si (Timed a)),
+    -- | These items have been deleted locally after they were synced
+    -- but the server has not been notified of that yet.
+    syncRequestDeletedItems :: !(Map si ServerTime)
+  }
   deriving (Show, Eq, Generic)
 
 instance
@@ -375,13 +371,13 @@ instance
   validate sr@SyncRequest {..} =
     mconcat
       [ genericValidate sr,
-        declare "There are no duplicate IDs"
-          $ distinct
-          $ concat
-            [ M.keys syncRequestKnownItems,
-              M.keys syncRequestKnownButChangedItems,
-              M.keys syncRequestDeletedItems
-            ]
+        declare "There are no duplicate IDs" $
+          distinct $
+            concat
+              [ M.keys syncRequestKnownItems,
+                M.keys syncRequestKnownButChangedItems,
+                M.keys syncRequestDeletedItems
+              ]
       ]
 
 instance (NFData ci, NFData si, NFData a) => NFData (SyncRequest ci si a)
@@ -418,11 +414,10 @@ initialSyncRequest =
       syncRequestDeletedItems = M.empty
     }
 
-data ClientAddition i
-  = ClientAddition
-      { clientAdditionId :: i,
-        clientAdditionServerTime :: ServerTime
-      }
+data ClientAddition i = ClientAddition
+  { clientAdditionId :: i,
+    clientAdditionServerTime :: ServerTime
+  }
   deriving (Show, Eq, Generic)
 
 instance Validity i => Validity (ClientAddition i)
@@ -435,48 +430,47 @@ instance FromJSON i => FromJSON (ClientAddition i) where
 instance ToJSON i => ToJSON (ClientAddition i) where
   toJSON ClientAddition {..} = object ["id" .= clientAdditionId, "time" .= clientAdditionServerTime]
 
-data SyncResponse ci si a
-  = SyncResponse
-      { -- | The client added these items and server has succesfully been made aware of that.
-        --
-        -- The client needs to update their server times
-        syncResponseClientAdded :: !(Map ci (ClientAddition si)),
-        -- | The client changed these items and server has succesfully been made aware of that.
-        --
-        -- The client needs to update their server times
-        syncResponseClientChanged :: !(Map si ServerTime),
-        -- | The client deleted these items and server has succesfully been made aware of that.
-        --
-        -- The client can delete them from its deleted items
-        syncResponseClientDeleted :: !(Set si),
-        -- | These items have been added on the server side
-        --
-        -- The client should add them too.
-        syncResponseServerAdded :: !(Map si (Timed a)),
-        -- | These items have been modified on the server side.
-        --
-        -- The client should modify them too.
-        syncResponseServerChanged :: !(Map si (Timed a)),
-        -- | These items were deleted on the server side
-        --
-        -- The client should delete them too
-        syncResponseServerDeleted :: !(Set si),
-        -- | These are conflicts where the server and the client both have an item, but it is different.
-        --
-        -- The server kept its part of each, the client can either take whatever the server gave them
-        -- or deal with the conflicts somehow, and then try to re-sync.
-        syncResponseConflicts :: !(Map si (Timed a)),
-        -- | These are conflicts where the server has an item but the client does not.
-        --
-        -- The server kept its item, the client can either take whatever the server gave them
-        -- or deal with the conflicts somehow, and then try to re-sync.
-        syncResponseConflictsClientDeleted :: !(Map si (Timed a)),
-        -- | These are conflicts where the server has no item but the client has a modified item.
-        --
-        -- The server left its item deleted, the client can either delete its items too
-        -- or deal with the conflicts somehow, and then try to re-sync.
-        syncResponseConflictsServerDeleted :: !(Set si)
-      }
+data SyncResponse ci si a = SyncResponse
+  { -- | The client added these items and server has succesfully been made aware of that.
+    --
+    -- The client needs to update their server times
+    syncResponseClientAdded :: !(Map ci (ClientAddition si)),
+    -- | The client changed these items and server has succesfully been made aware of that.
+    --
+    -- The client needs to update their server times
+    syncResponseClientChanged :: !(Map si ServerTime),
+    -- | The client deleted these items and server has succesfully been made aware of that.
+    --
+    -- The client can delete them from its deleted items
+    syncResponseClientDeleted :: !(Set si),
+    -- | These items have been added on the server side
+    --
+    -- The client should add them too.
+    syncResponseServerAdded :: !(Map si (Timed a)),
+    -- | These items have been modified on the server side.
+    --
+    -- The client should modify them too.
+    syncResponseServerChanged :: !(Map si (Timed a)),
+    -- | These items were deleted on the server side
+    --
+    -- The client should delete them too
+    syncResponseServerDeleted :: !(Set si),
+    -- | These are conflicts where the server and the client both have an item, but it is different.
+    --
+    -- The server kept its part of each, the client can either take whatever the server gave them
+    -- or deal with the conflicts somehow, and then try to re-sync.
+    syncResponseConflicts :: !(Map si (Timed a)),
+    -- | These are conflicts where the server has an item but the client does not.
+    --
+    -- The server kept its item, the client can either take whatever the server gave them
+    -- or deal with the conflicts somehow, and then try to re-sync.
+    syncResponseConflictsClientDeleted :: !(Map si (Timed a)),
+    -- | These are conflicts where the server has no item but the client has a modified item.
+    --
+    -- The server left its item deleted, the client can either delete its items too
+    -- or deal with the conflicts somehow, and then try to re-sync.
+    syncResponseConflictsServerDeleted :: !(Set si)
+  }
   deriving (Show, Eq, Generic)
 
 instance
@@ -486,19 +480,19 @@ instance
   validate sr@SyncResponse {..} =
     mconcat
       [ genericValidate sr,
-        declare "There are no duplicate IDs"
-          $ distinct
-          $ concat
-            [ map (\(_, ClientAddition {..}) -> clientAdditionId) $ M.toList syncResponseClientAdded,
-              M.keys syncResponseClientChanged,
-              S.toList syncResponseClientDeleted,
-              M.keys syncResponseServerAdded,
-              M.keys syncResponseServerChanged,
-              S.toList syncResponseServerDeleted,
-              M.keys syncResponseConflicts,
-              M.keys syncResponseConflictsClientDeleted,
-              S.toList syncResponseConflictsServerDeleted
-            ]
+        declare "There are no duplicate IDs" $
+          distinct $
+            concat
+              [ map (\(_, ClientAddition {..}) -> clientAdditionId) $ M.toList syncResponseClientAdded,
+                M.keys syncResponseClientChanged,
+                S.toList syncResponseClientDeleted,
+                M.keys syncResponseServerAdded,
+                M.keys syncResponseServerChanged,
+                S.toList syncResponseServerDeleted,
+                M.keys syncResponseConflicts,
+                M.keys syncResponseConflictsClientDeleted,
+                S.toList syncResponseConflictsServerDeleted
+              ]
       ]
 
 instance (NFData ci, NFData si, NFData a) => NFData (SyncResponse ci si a)
@@ -755,57 +749,56 @@ mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 --     - keep local
 --
 -- It is a lot of work to implement one of these, so make sure to have a look at the mergeful companion packages to see if maybe there is already one for your application domain.
-data ClientSyncProcessor ci si a (m :: * -> *)
-  = ClientSyncProcessor
-      { -- | Get the synced values with keys in the given set
-        clientSyncProcessorQuerySyncedButChangedValues :: !(Set si -> m (Map si (Timed a))),
-        -- | Complete additions that were acknowledged by the server.
-        --
-        -- This involves saving the server id and the server time
-        clientSyncProcessorSyncClientAdded :: !(Map ci (ClientAddition si) -> m ()),
-        -- | Complete changes that were acknowledged by the server
-        --
-        -- This involves updating the server time
-        clientSyncProcessorSyncClientChanged :: !(Map si ServerTime -> m ()),
-        -- | Complete deletions that were acknowledged by the server
-        --
-        -- This means deleting these tombstoned items entirely
-        clientSyncProcessorSyncClientDeleted :: !(Set si -> m ()),
-        -- | Re-create the items that need to be created locally as a result of a 'client deleted' conflict that has been merged by taking the remote value.
-        --
-        -- You can likely implement this in the same way as @clientSyncProcessorSyncServerAdded@.
-        clientSyncProcessorSyncClientDeletedConflictTakeRemoteChanged :: !(Map si (Timed a) -> m ()),
-        -- | Leave the items deleted that need to be left deleted as a result of a 'client deleted' conflict that has been merged by leaving it deleted.
-        --
-        -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
-        clientSyncProcessorSyncClientDeletedConflictStayDeleted :: !(Map si (Timed a) -> m ()),
-        -- | Leave the items undeleted that need to be left deleted as a result of a 'server deleted' conflict that has been merged by leaving it undeleted.
-        --
-        -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
-        clientSyncProcessorSyncServerDeletedConflictKeepLocalChange :: !(Set si -> m ()),
-        -- | Delete the items that need to be deleted locally as a result of a 'server deleted' conflict that has been merged by deleting the local value.
-        --
-        -- You can likely implement this in the same way as @clientSyncProcessorSyncServerDeleted@.
-        clientSyncProcessorSyncServerDeletedConflictDelete :: !(Set si -> m ()),
-        -- | Deal with the items for which no conflict was resolved.
-        --
-        -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
-        clientSyncProcessorSyncChangeConflictKeepLocal :: !(Map si (Timed a) -> m ()),
-        -- | Store the items that were in a conflict but the conflict was resolved correctly.
-        -- These items should be marked as changed.
-        clientSyncProcessorSyncChangeConflictMerged :: !(Map si (Timed a) -> m ()),
-        -- | Store the items that were in a conflict but the client will take the remote values
-        -- These items should be marked as unchanged.
-        --
-        -- You can likely implement this in the same way as @clientSyncProcessorSyncServerChanged@.
-        clientSyncProcessorSyncChangeConflictTakeRemote :: !(Map si (Timed a) -> m ()),
-        -- | Store the items that the server added
-        clientSyncProcessorSyncServerAdded :: !(Map si (Timed a) -> m ()),
-        -- | Store the items that the server changed
-        clientSyncProcessorSyncServerChanged :: !(Map si (Timed a) -> m ()),
-        -- | Store the items that the server deleted
-        clientSyncProcessorSyncServerDeleted :: !(Set si -> m ())
-      }
+data ClientSyncProcessor ci si a (m :: * -> *) = ClientSyncProcessor
+  { -- | Get the synced values with keys in the given set
+    clientSyncProcessorQuerySyncedButChangedValues :: !(Set si -> m (Map si (Timed a))),
+    -- | Complete additions that were acknowledged by the server.
+    --
+    -- This involves saving the server id and the server time
+    clientSyncProcessorSyncClientAdded :: !(Map ci (ClientAddition si) -> m ()),
+    -- | Complete changes that were acknowledged by the server
+    --
+    -- This involves updating the server time
+    clientSyncProcessorSyncClientChanged :: !(Map si ServerTime -> m ()),
+    -- | Complete deletions that were acknowledged by the server
+    --
+    -- This means deleting these tombstoned items entirely
+    clientSyncProcessorSyncClientDeleted :: !(Set si -> m ()),
+    -- | Re-create the items that need to be created locally as a result of a 'client deleted' conflict that has been merged by taking the remote value.
+    --
+    -- You can likely implement this in the same way as @clientSyncProcessorSyncServerAdded@.
+    clientSyncProcessorSyncClientDeletedConflictTakeRemoteChanged :: !(Map si (Timed a) -> m ()),
+    -- | Leave the items deleted that need to be left deleted as a result of a 'client deleted' conflict that has been merged by leaving it deleted.
+    --
+    -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
+    clientSyncProcessorSyncClientDeletedConflictStayDeleted :: !(Map si (Timed a) -> m ()),
+    -- | Leave the items undeleted that need to be left deleted as a result of a 'server deleted' conflict that has been merged by leaving it undeleted.
+    --
+    -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
+    clientSyncProcessorSyncServerDeletedConflictKeepLocalChange :: !(Set si -> m ()),
+    -- | Delete the items that need to be deleted locally as a result of a 'server deleted' conflict that has been merged by deleting the local value.
+    --
+    -- You can likely implement this in the same way as @clientSyncProcessorSyncServerDeleted@.
+    clientSyncProcessorSyncServerDeletedConflictDelete :: !(Set si -> m ()),
+    -- | Deal with the items for which no conflict was resolved.
+    --
+    -- You likely don't have to do anything with these, as they are the way that has been decided they should be, but you may want to log them or so.
+    clientSyncProcessorSyncChangeConflictKeepLocal :: !(Map si (Timed a) -> m ()),
+    -- | Store the items that were in a conflict but the conflict was resolved correctly.
+    -- These items should be marked as changed.
+    clientSyncProcessorSyncChangeConflictMerged :: !(Map si (Timed a) -> m ()),
+    -- | Store the items that were in a conflict but the client will take the remote values
+    -- These items should be marked as unchanged.
+    --
+    -- You can likely implement this in the same way as @clientSyncProcessorSyncServerChanged@.
+    clientSyncProcessorSyncChangeConflictTakeRemote :: !(Map si (Timed a) -> m ()),
+    -- | Store the items that the server added
+    clientSyncProcessorSyncServerAdded :: !(Map si (Timed a) -> m ()),
+    -- | Store the items that the server changed
+    clientSyncProcessorSyncServerChanged :: !(Map si (Timed a) -> m ()),
+    -- | Store the items that the server deleted
+    clientSyncProcessorSyncServerDeleted :: !(Set si -> m ())
+  }
   deriving (Generic)
 
 mergeSyncResponseCustom :: (Ord si, Monad m) => ItemMergeStrategy a -> ClientSyncProcessor ci si a m -> SyncResponse ci si a -> m ()
@@ -886,9 +879,10 @@ mergeServerDeletedConflicts ::
   Map si (Timed a) ->
   -- | The result is a map of items that need to be deleted on the client.
   (Set si, Set si)
-mergeServerDeletedConflicts func m = both M.keysSet $ flip M.partition m $ \(Timed si _) -> case func si of
-  KeepLocalChange -> False
-  Delete -> True
+mergeServerDeletedConflicts func m = both M.keysSet $
+  flip M.partition m $ \(Timed si _) -> case func si of
+    KeepLocalChange -> False
+    Delete -> True
   where
     both :: (a -> b) -> (a, a) -> (b, b)
     both f (a1, a2) = (f a1, f a2)
@@ -902,17 +896,16 @@ instance (Validity ci, Validity si) => Validity (Identifier ci si)
 
 instance (NFData ci, NFData si) => NFData (Identifier ci si)
 
-data ServerSyncProcessor ci si a m
-  = ServerSyncProcessor
-      { -- | Read all items
-        serverSyncProcessorRead :: !(m (Map si (Timed a))),
-        -- | Add an item with 'initialServerTime', can fail.
-        serverSyncProcessorAddItem :: !(ci -> a -> m (Maybe si)),
-        -- | Update an item
-        serverSyncProcessorChangeItem :: !(si -> ServerTime -> a -> m ()),
-        -- | Delete an item
-        serverSyncProcessorDeleteItem :: !(si -> m ())
-      }
+data ServerSyncProcessor ci si a m = ServerSyncProcessor
+  { -- | Read all items
+    serverSyncProcessorRead :: !(m (Map si (Timed a))),
+    -- | Add an item with 'initialServerTime', can fail.
+    serverSyncProcessorAddItem :: !(ci -> a -> m (Maybe si)),
+    -- | Update an item
+    serverSyncProcessorChangeItem :: !(si -> ServerTime -> a -> m ()),
+    -- | Delete an item
+    serverSyncProcessorDeleteItem :: !(si -> m ())
+  }
   deriving (Generic)
 
 -- | Process a server sync
@@ -965,9 +958,10 @@ processServerSyncCustom ::
 processServerSyncCustom ServerSyncProcessor {..} SyncRequest {..} = do
   serverItems <- serverSyncProcessorRead
   -- A: CA (generate a new identifier)
-  syncResponseClientAdded <- fmap (M.mapMaybe id) $ flip M.traverseWithKey syncRequestNewItems $ \cid a -> do
-    msi <- serverSyncProcessorAddItem cid a
-    pure $ (\si -> ClientAddition {clientAdditionId = si, clientAdditionServerTime = initialServerTime}) <$> (msi :: Maybe si)
+  syncResponseClientAdded <- fmap (M.mapMaybe id) $
+    flip M.traverseWithKey syncRequestNewItems $ \cid a -> do
+      msi <- serverSyncProcessorAddItem cid a
+      pure $ (\si -> ClientAddition {clientAdditionId = si, clientAdditionServerTime = initialServerTime}) <$> (msi :: Maybe si)
   -- C:
   let decideOnSynced tup@(sc, sd) (si, ct) =
         case M.lookup si serverItems of

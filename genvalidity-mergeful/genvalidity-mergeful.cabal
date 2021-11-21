@@ -4,21 +4,20 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c7ad72ed584d112015454920ed67250d4a3795bc5fed8627df9dcaaf600135be
+-- hash: 218b3a60cb86fcedf2942fea48c5ee2dc351c552cd48ca944629761753bfc87b
 
 name:           genvalidity-mergeful
-version:        0.2.0.0
+version:        0.3.0.0
 description:    Please see the README on GitHub at <https://github.com/NorfairKing/mergeful#readme>
 homepage:       https://github.com/NorfairKing/mergeful#readme
 bug-reports:    https://github.com/NorfairKing/mergeful/issues
 author:         Tom Sydney Kerckhove
 maintainer:     syd@cs-syd.eu
-copyright:      Copyright: (c) 2019-2020 Tom Sydney Kerckhove
+copyright:      Copyright: (c) 2019-2021 Tom Sydney Kerckhove
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    README.md
     CHANGELOG.md
 
 source-repository head

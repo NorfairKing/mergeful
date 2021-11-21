@@ -3,8 +3,8 @@ with final.haskell.lib;
 let
   mergefulPkg = name:
     doBenchmark (
-      failOnAllWarnings (
-        final.haskellPackages.callCabal2nix name (final.gitignoreSource (../. + "/${name}")) {}
+      buildStrictly (
+        final.haskellPackages.callCabal2nixWithOptions name (final.gitignoreSource (../. + "/${name}")) "--no-hpack" { }
       )
     );
 
@@ -19,11 +19,11 @@ in
   haskellPackages =
     previous.haskellPackages.override (
       old:
-        {
-          overrides =
-            final.lib.composeExtensions (old.overrides or (_: _: {})) (
-              self: super: final.mergefulPackages
-            );
-        }
+      {
+        overrides =
+          final.lib.composeExtensions (old.overrides or (_: _: { })) (
+            self: super: final.mergefulPackages
+          );
+      }
     );
 }
