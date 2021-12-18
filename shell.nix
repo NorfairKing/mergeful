@@ -6,8 +6,7 @@ in
 pkgs.haskell.lib.buildStackProject {
   name = "mergeful-shell";
   buildInputs = with pkgs; [
-    (import sources.niv { }).niv
-    haskellPackages.autoexporter
+    (import sources.niv { inherit pkgs; }).niv
     zlib
   ] ++ pre-commit.tools;
   shellHook = pre-commit.run.shellHook;

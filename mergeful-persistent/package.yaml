@@ -3,8 +3,8 @@ version:             0.1.0.0
 github:              "NorfairKing/mergeful"
 license:             MIT
 author:              "Tom Sydney Kerckhove"
-maintainer:          "syd.kerckhove@gmail.com"
-copyright:           "Copyright: (c) 2021 Tom Sydney Kerckhove"
+maintainer:          "syd@cs-syd.eu"
+copyright:           "Copyright: (c) 2021-2022 Tom Sydney Kerckhove"
 synopsis:            Support for using mergeful from persistent-based databases
 
 extra-source-files:
