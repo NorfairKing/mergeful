@@ -171,8 +171,8 @@ clientMergeSyncResponse :: ItemMergeStrategy Thing -> SResp -> T ()
 clientMergeSyncResponse strat = runClientDB . clientMergeSyncResponseThingQuery strat
 
 data TestEnv = TestEnv
-  { testEnvClientPool :: ConnectionPool,
-    testEnvServerPool :: ConnectionPool
+  { testEnvClientPool :: !ConnectionPool,
+    testEnvServerPool :: !ConnectionPool
   }
 
 oneClientSpec :: SpecWith TestEnv -> Spec

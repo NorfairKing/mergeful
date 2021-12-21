@@ -140,15 +140,15 @@ instance NFData ClientId
 
 data ClientStore ci si a = ClientStore
   { -- | These items are new locally but have not been synced to the server yet.
-    clientStoreAddedItems :: Map ci a,
+    clientStoreAddedItems :: !(Map ci a),
     -- | These items have been synced at their respective 'ServerTime's.
-    clientStoreSyncedItems :: Map si (Timed a),
+    clientStoreSyncedItems :: !(Map si (Timed a)),
     -- | These items have been synced at their respective 'ServerTime's
     -- but modified locally since then.
-    clientStoreSyncedButChangedItems :: Map si (Timed a),
+    clientStoreSyncedButChangedItems :: !(Map si (Timed a)),
     -- | These items have been deleted locally after they were synced
     -- but the server has not been notified of that yet.
-    clientStoreDeletedItems :: Map si ServerTime
+    clientStoreDeletedItems :: !(Map si ServerTime)
   }
   deriving (Show, Eq, Generic)
 
@@ -415,8 +415,8 @@ initialSyncRequest =
     }
 
 data ClientAddition i = ClientAddition
-  { clientAdditionId :: i,
-    clientAdditionServerTime :: ServerTime
+  { clientAdditionId :: !i,
+    clientAdditionServerTime :: !ServerTime
   }
   deriving (Show, Eq, Generic)
 
@@ -888,8 +888,8 @@ mergeServerDeletedConflicts func m = both M.keysSet $
     both f (a1, a2) = (f a1, f a2)
 
 data Identifier ci si
-  = OnlyServer si
-  | BothServerAndClient si ci
+  = OnlyServer !si
+  | BothServerAndClient !si !ci
   deriving (Show, Eq, Ord, Generic)
 
 instance (Validity ci, Validity si) => Validity (Identifier ci si)
