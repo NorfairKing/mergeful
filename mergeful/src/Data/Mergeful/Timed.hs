@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -11,11 +12,13 @@ module Data.Mergeful.Timed
     initialServerTime,
     incrementServerTime,
     Timed (..),
+    timedObjectCodec,
   )
 where
 
+import Autodocodec
 import Control.DeepSeq
-import Data.Aeson as JSON
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Validity
 import Data.Word
 import GHC.Generics (Generic)
@@ -35,11 +38,15 @@ import GHC.Generics (Generic)
 newtype ServerTime = ServerTime
   { unServerTime :: Word64
   }
-  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec ServerTime)
 
 instance Validity ServerTime
 
 instance NFData ServerTime
+
+instance HasCodec ServerTime where
+  codec = dimapCodec ServerTime unServerTime codec
 
 -- | A server time to start with.
 initialServerTime :: ServerTime
@@ -54,14 +61,18 @@ data Timed a = Timed
   { timedValue :: !a,
     timedTime :: !ServerTime
   }
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (Timed a))
 
 instance Validity a => Validity (Timed a)
 
 instance NFData a => NFData (Timed a)
 
-instance FromJSON a => FromJSON (Timed a) where
-  parseJSON = withObject "Timed" $ \o -> Timed <$> o .: "value" <*> o .: "time"
+instance HasCodec a => HasCodec (Timed a) where
+  codec = object "Timed" timedObjectCodec
 
-instance ToJSON a => ToJSON (Timed a) where
-  toJSON Timed {..} = object ["value" .= timedValue, "time" .= timedTime]
+timedObjectCodec :: HasCodec a => JSONObjectCodec (Timed a)
+timedObjectCodec =
+  Timed
+    <$> requiredField "value" "timed value" .= timedValue
+    <*> requiredField "time" "timed time" .= timedTime

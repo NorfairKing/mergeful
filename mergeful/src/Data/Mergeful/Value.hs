@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -60,20 +62,33 @@ module Data.Mergeful.Value
   )
 where
 
+import Autodocodec
 import Control.DeepSeq
-import Data.Aeson as JSON
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Mergeful.Timed
+import Data.Text (Text)
 import Data.Validity
 import GHC.Generics (Generic)
 
 data ChangedFlag
   = Changed
   | NotChanged
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec ChangedFlag)
 
 instance Validity ChangedFlag
 
 instance NFData ChangedFlag
+
+instance HasCodec ChangedFlag where
+  codec = dimapCodec f g codec
+    where
+      f = \case
+        True -> Changed
+        False -> NotChanged
+      g = \case
+        Changed -> True
+        NotChanged -> False
 
 -- | The client side value.
 --
@@ -82,37 +97,23 @@ instance NFData ChangedFlag
 -- the server, and whether the item has been modified at the client
 --
 -- There cannot be an unsynced 'ClientValue'.
-data ClientValue a
-  = ClientValue !(Timed a) !ChangedFlag
-  deriving (Show, Eq, Generic)
+data ClientValue a = ClientValue
+  { clientValueTimedValue :: !(Timed a),
+    clientValueChanged :: !ChangedFlag
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ClientValue a))
 
 instance Validity a => Validity (ClientValue a)
 
 instance NFData a => NFData (ClientValue a)
 
-instance FromJSON a => FromJSON (ClientValue a) where
-  parseJSON =
-    withObject "ClientValue" $ \o ->
-      ClientValue <$> (Timed <$> o .: "value" <*> o .: "time")
-        <*> ( ( \b ->
-                  if b
-                    then Changed
-                    else NotChanged
-              )
-                <$> o .: "changed"
-            )
-
-instance ToJSON a => ToJSON (ClientValue a) where
-  toJSON (ClientValue Timed {..} cf) =
-    object
-      [ "value" .= timedValue,
-        "time" .= timedTime,
-        "changed"
-          .= ( case cf of
-                 Changed -> True
-                 NotChanged -> False
-             )
-      ]
+instance HasCodec a => HasCodec (ClientValue a) where
+  codec =
+    object "ClientValue" $
+      ClientValue
+        <$> timedObjectCodec .= clientValueTimedValue
+        <*> requiredField "changed" "whether the value has changed, client-side" .= clientValueChanged
 
 -- | Produce a client value based on an initial synchronisation request
 initialClientValue :: Timed a -> ClientValue a
@@ -122,20 +123,16 @@ initialClientValue t = ClientValue t NotChanged
 --
 -- The only difference between 'a' and 'ServerValue a' is that 'ServerValue a' also
 -- remembers the last time this value was changed during synchronisation.
-newtype ServerValue a
-  = ServerValue (Timed a)
-  deriving (Show, Eq, Generic)
+newtype ServerValue a = ServerValue {unServerValue :: Timed a}
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ServerValue a))
 
 instance Validity a => Validity (ServerValue a)
 
 instance NFData a => NFData (ServerValue a)
 
-instance FromJSON a => FromJSON (ServerValue a) where
-  parseJSON =
-    withObject "ServerValue" $ \o -> ServerValue <$> (Timed <$> o .: "value" <*> o .: "time")
-
-instance ToJSON a => ToJSON (ServerValue a) where
-  toJSON (ServerValue Timed {..}) = object ["value" .= timedValue, "time" .= timedTime]
+instance HasCodec a => HasCodec (ServerValue a) where
+  codec = object "ServerValue" $ ServerValue <$> timedObjectCodec .= unServerValue
 
 -- | Initialise a server value.
 --
@@ -149,29 +146,30 @@ data ValueSyncRequest a
   | -- | There is an item locally that was synced at the given 'ServerTime'
     -- but it has been changed since then.
     ValueSyncRequestKnownButChanged !(Timed a)
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ValueSyncRequest a))
 
 instance Validity a => Validity (ValueSyncRequest a)
 
 instance NFData a => NFData (ValueSyncRequest a)
 
-instance FromJSON a => FromJSON (ValueSyncRequest a) where
-  parseJSON =
-    withObject "ValueSyncRequest" $ \o -> do
-      typ <- o .: "type"
-      case typ :: String of
-        "synced" -> ValueSyncRequestKnown <$> o .: "time"
-        "changed" -> ValueSyncRequestKnownButChanged <$> (Timed <$> o .: "value" <*> o .: "time")
-        _ -> fail "unknown item type"
+instance HasCodec a => HasCodec (ValueSyncRequest a) where
+  codec =
+    object "ValueSyncRequest" $
+      dimapCodec f g $
+        disjointEitherCodec
+          (typeField "synced" <*> requiredField "time" "time at which the server said the value was last synced")
+          (typeField "changed" <*> timedObjectCodec)
+    where
+      f = \case
+        Left st -> ValueSyncRequestKnown st
+        Right tv -> ValueSyncRequestKnownButChanged tv
+      g = \case
+        ValueSyncRequestKnown st -> Left st
+        ValueSyncRequestKnownButChanged tv -> Right tv
 
-instance ToJSON a => ToJSON (ValueSyncRequest a) where
-  toJSON ci =
-    object $
-      let o n rest = ("type" .= (n :: String)) : rest
-       in case ci of
-            ValueSyncRequestKnown t -> o "synced" ["time" .= t]
-            ValueSyncRequestKnownButChanged Timed {..} ->
-              o "changed" ["value" .= timedValue, "time" .= timedTime]
+      typeField :: Text -> ObjectCodec b (a -> a)
+      typeField typeName = id <$ requiredFieldWith' "type" (literalTextCodec typeName) .= const typeName
 
 data ValueSyncResponse a
   = -- | The client and server are fully in sync.
@@ -188,35 +186,40 @@ data ValueSyncResponse a
     ValueSyncResponseServerChanged !(Timed a)
   | -- | The item at the server side
     ValueSyncResponseConflict !(Timed a)
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ValueSyncResponse a))
 
 instance Validity a => Validity (ValueSyncResponse a)
 
 instance NFData a => NFData (ValueSyncResponse a)
 
-instance FromJSON a => FromJSON (ValueSyncResponse a) where
-  parseJSON =
-    withObject "ValueSyncResponse" $ \o -> do
-      typ <- o .: "type"
-      case typ :: String of
-        "in-sync" -> pure ValueSyncResponseInSync
-        "client-changed" -> ValueSyncResponseClientChanged <$> o .: "time"
-        "server-changed" ->
-          ValueSyncResponseServerChanged <$> (Timed <$> o .: "value" <*> o .: "time")
-        "conflict" -> ValueSyncResponseConflict <$> o .: "value"
-        _ -> fail "unknown type"
+instance HasCodec a => HasCodec (ValueSyncResponse a) where
+  codec =
+    object "ValueSyncResponse" $
+      dimapCodec f g $
+        disjointEitherCodec
+          ( disjointEitherCodec
+              (typeField "in-sync" <*> pure ())
+              (typeField "client-changed" <*> requiredField "time" "server time")
+          )
+          ( disjointEitherCodec
+              (typeField "server-changed" <*> timedObjectCodec)
+              (typeField "conflict" <*> timedObjectCodec)
+          )
+    where
+      f = \case
+        Left (Left ()) -> ValueSyncResponseInSync
+        Left (Right st) -> ValueSyncResponseClientChanged st
+        Right (Left tv) -> ValueSyncResponseServerChanged tv
+        Right (Right tv) -> ValueSyncResponseConflict tv
+      g = \case
+        ValueSyncResponseInSync -> Left (Left ())
+        ValueSyncResponseClientChanged st -> Left (Right st)
+        ValueSyncResponseServerChanged tv -> Right (Left tv)
+        ValueSyncResponseConflict tv -> Right (Right tv)
 
-instance ToJSON a => ToJSON (ValueSyncResponse a) where
-  toJSON isr =
-    object $
-      let o s rest = ("type" .= (s :: String)) : rest
-          oe s = o s []
-       in case isr of
-            ValueSyncResponseInSync -> oe "in-sync"
-            ValueSyncResponseClientChanged t -> o "client-changed" ["time" .= t]
-            ValueSyncResponseServerChanged Timed {..} ->
-              o "server-changed" ["value" .= timedValue, "time" .= timedTime]
-            ValueSyncResponseConflict a -> o "conflict" ["value" .= a]
+      typeField :: Text -> ObjectCodec b (a -> a)
+      typeField typeName = id <$ requiredFieldWith' "type" (literalTextCodec typeName) .= const typeName
 
 -- | Produce an 'ItemSyncRequest' from a 'ClientItem'.
 --

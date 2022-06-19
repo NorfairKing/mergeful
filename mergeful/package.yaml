@@ -18,8 +18,9 @@ library:
     - -Wall
     - -fwarn-redundant-constraints
   dependencies:
-    - base >= 4.7 && < 5
     - aeson
+    - autodocodec
+    - base >= 4.7 && < 5
     - containers
     - deepseq
     - mtl

@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -72,10 +74,11 @@ module Data.Mergeful.Item
   )
 where
 
-import Control.Applicative
+import Autodocodec
 import Control.DeepSeq
-import Data.Aeson as JSON
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Mergeful.Timed
+import Data.Text (Text)
 import Data.Validity
 import GHC.Generics (Generic)
 
@@ -90,35 +93,45 @@ data ClientItem a
     ClientItemSyncedButChanged !(Timed a)
   | -- | There was an item, and it has been deleted locally, but the server has not been made aware of this.
     ClientDeleted !ServerTime
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ClientItem a))
 
 instance Validity a => Validity (ClientItem a)
 
 instance NFData a => NFData (ClientItem a)
 
-instance FromJSON a => FromJSON (ClientItem a) where
-  parseJSON =
-    withObject "ClientItem" $ \o -> do
-      typ <- o .: "type"
-      case typ :: String of
-        "empty" -> pure ClientEmpty
-        "added" -> ClientAdded <$> o .: "value"
-        "synced" -> ClientItemSynced <$> (Timed <$> o .: "value" <*> o .: "time")
-        "changed" -> ClientItemSyncedButChanged <$> (Timed <$> o .: "value" <*> o .: "time")
-        "deleted" -> ClientDeleted <$> o .: "time"
-        _ -> fail "unknown item type"
+instance HasCodec a => HasCodec (ClientItem a) where
+  codec =
+    object "ClientItem" $
+      dimapCodec f g $
+        disjointEitherCodec
+          ( disjointEitherCodec
+              (typeField "empty" <*> pure ())
+              (typeField "added" <*> requiredField "value" "item that was added, client-side")
+          )
+          ( disjointEitherCodec
+              (typeField "synced" <*> timedObjectCodec)
+              ( disjointEitherCodec
+                  (typeField "changed" <*> timedObjectCodec)
+                  (typeField "deleted" <*> requiredField "time" "last time the server confirmed a change, from the client's perspective")
+              )
+          )
+    where
+      f = \case
+        Left (Left ()) -> ClientEmpty
+        Left (Right v) -> ClientAdded v
+        Right (Left tv) -> ClientItemSynced tv
+        Right (Right (Left tv)) -> ClientItemSyncedButChanged tv
+        Right (Right (Right st)) -> ClientDeleted st
+      g = \case
+        ClientEmpty -> Left (Left ())
+        ClientAdded v -> Left (Right v)
+        ClientItemSynced tv -> Right (Left tv)
+        ClientItemSyncedButChanged tv -> Right (Right (Left tv))
+        ClientDeleted st -> Right (Right (Right st))
 
-instance ToJSON a => ToJSON (ClientItem a) where
-  toJSON ci =
-    object $
-      case ci of
-        ClientEmpty -> ["type" .= ("empty" :: String)]
-        ClientAdded a -> ["type" .= ("added" :: String), "value" .= a]
-        ClientItemSynced Timed {..} ->
-          ["type" .= ("synced" :: String), "value" .= timedValue, "time" .= timedTime]
-        ClientItemSyncedButChanged Timed {..} ->
-          ["type" .= ("changed" :: String), "value" .= timedValue, "time" .= timedTime]
-        ClientDeleted t -> ["type" .= ("deleted" :: String), "time" .= t]
+      typeField :: Text -> ObjectCodec b (a -> a)
+      typeField typeName = id <$ requiredFieldWith' "type" (literalTextCodec typeName) .= const typeName
 
 -- | A client item to start with.
 --
@@ -131,23 +144,24 @@ data ServerItem a
     ServerEmpty
   | -- | There is an item on the server side, and it was last synced at the given 'ServerTime'.
     ServerFull !(Timed a)
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ServerItem a))
 
 instance Validity a => Validity (ServerItem a)
 
 instance NFData a => NFData (ServerItem a)
 
-instance FromJSON a => FromJSON (ServerItem a) where
-  parseJSON =
-    withObject "ServerItem" $ \o ->
-      ServerFull <$> (Timed <$> o .: "value" <*> o .: "time") <|> pure ServerEmpty
-
-instance ToJSON a => ToJSON (ServerItem a) where
-  toJSON si =
-    object $
-      case si of
-        ServerEmpty -> []
-        ServerFull Timed {..} -> ["value" .= timedValue, "time" .= timedTime]
+instance HasCodec a => HasCodec (ServerItem a) where
+  codec =
+    object "ServerItem" $
+      dimapCodec f g $ possiblyJointEitherCodec timedObjectCodec (pure ())
+    where
+      f = \case
+        Left tv -> ServerFull tv
+        Right () -> ServerEmpty
+      g = \case
+        ServerFull tv -> Left tv
+        ServerEmpty -> Right ()
 
 -- | A server item to start with.
 --
@@ -168,36 +182,45 @@ data ItemSyncRequest a
   | -- | There was an item locally that has been deleted but the
     -- deletion wasn't synced to the server yet.
     ItemSyncRequestDeletedLocally !ServerTime
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ItemSyncRequest a))
 
 instance Validity a => Validity (ItemSyncRequest a)
 
 instance NFData a => NFData (ItemSyncRequest a)
 
-instance FromJSON a => FromJSON (ItemSyncRequest a) where
-  parseJSON =
-    withObject "ItemSyncRequest" $ \o -> do
-      typ <- o .: "type"
-      case typ :: String of
-        "empty" -> pure ItemSyncRequestPoll
-        "added" -> ItemSyncRequestNew <$> o .: "value"
-        "synced" -> ItemSyncRequestKnown <$> o .: "time"
-        "changed" -> ItemSyncRequestKnownButChanged <$> (Timed <$> o .: "value" <*> o .: "time")
-        "deleted" -> ItemSyncRequestDeletedLocally <$> o .: "time"
-        _ -> fail "unknown item type"
+instance HasCodec a => HasCodec (ItemSyncRequest a) where
+  codec =
+    object "ItemSyncRequest" $
+      dimapCodec f g $
+        disjointEitherCodec
+          ( disjointEitherCodec
+              (typeField "empty" <*> pure ())
+              (typeField "added" <*> requiredField "value" "item that was added, client-side")
+          )
+          ( disjointEitherCodec
+              (typeField "synced" <*> requiredField "time" "last time the server confirmed a change, from the client's perspective")
+              ( disjointEitherCodec
+                  (typeField "changed" <*> timedObjectCodec)
+                  (typeField "deleted" <*> requiredField "time" "last time the server confirmed a change, from the client's perspective")
+              )
+          )
+    where
+      f = \case
+        Left (Left ()) -> ItemSyncRequestPoll
+        Left (Right v) -> ItemSyncRequestNew v
+        Right (Left tv) -> ItemSyncRequestKnown tv
+        Right (Right (Left tv)) -> ItemSyncRequestKnownButChanged tv
+        Right (Right (Right st)) -> ItemSyncRequestDeletedLocally st
+      g = \case
+        ItemSyncRequestPoll -> Left (Left ())
+        ItemSyncRequestNew v -> Left (Right v)
+        ItemSyncRequestKnown tv -> Right (Left tv)
+        ItemSyncRequestKnownButChanged tv -> Right (Right (Left tv))
+        ItemSyncRequestDeletedLocally st -> Right (Right (Right st))
 
-instance ToJSON a => ToJSON (ItemSyncRequest a) where
-  toJSON ci =
-    object $
-      let o n rest = ("type" .= (n :: String)) : rest
-          oe n = o n []
-       in case ci of
-            ItemSyncRequestPoll -> oe "empty"
-            ItemSyncRequestNew a -> o "added" ["value" .= a]
-            ItemSyncRequestKnown t -> o "synced" ["time" .= t]
-            ItemSyncRequestKnownButChanged Timed {..} ->
-              o "changed" ["value" .= timedValue, "time" .= timedTime]
-            ItemSyncRequestDeletedLocally t -> o "deleted" ["time" .= t]
+      typeField :: Text -> ObjectCodec b (a -> a)
+      typeField typeName = id <$ requiredFieldWith' "type" (literalTextCodec typeName) .= const typeName
 
 -- | An intial 'ItemSyncRequest' to start with.
 --
@@ -253,50 +276,75 @@ data ItemSyncResponse a
     -- or deal with the conflict somehow, and then try to re-sync.
     ItemSyncResponseConflictClientDeleted !(Timed a)
   | ItemSyncResponseConflictServerDeleted
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ItemSyncResponse a))
 
 instance Validity a => Validity (ItemSyncResponse a)
 
 instance NFData a => NFData (ItemSyncResponse a)
 
-instance FromJSON a => FromJSON (ItemSyncResponse a) where
-  parseJSON =
-    withObject "ItemSyncResponse" $ \o -> do
-      typ <- o .: "type"
-      case typ :: String of
-        "in-sync-empty" -> pure ItemSyncResponseInSyncEmpty
-        "in-sync-full" -> pure ItemSyncResponseInSyncFull
-        "client-added" -> ItemSyncResponseClientAdded <$> o .: "time"
-        "client-changed" -> ItemSyncResponseClientChanged <$> o .: "time"
-        "client-deleted" -> pure ItemSyncResponseClientDeleted
-        "server-added" -> ItemSyncResponseServerAdded <$> (Timed <$> o .: "value" <*> o .: "time")
-        "server-changed" ->
-          ItemSyncResponseServerChanged <$> (Timed <$> o .: "value" <*> o .: "time")
-        "server-deleted" -> pure ItemSyncResponseServerDeleted
-        "conflict" -> ItemSyncResponseConflict <$> o .: "value"
-        "conflict-client-deleted" -> ItemSyncResponseConflictClientDeleted <$> o .: "value"
-        "conflict-server-deleted" -> pure ItemSyncResponseConflictServerDeleted
-        _ -> fail "unknown type"
+instance HasCodec a => HasCodec (ItemSyncResponse a) where
+  codec =
+    object "ItemSyncResponse" $
+      dimapCodec f g $
+        disjointEitherCodec
+          ( disjointEitherCodec
+              ( disjointEitherCodec
+                  (typeField "in-sync-empty" <*> pure ())
+                  (typeField "in-sync-full" <*> pure ())
+              )
+              ( disjointEitherCodec
+                  (typeField "client-added" <*> requiredField "time" "server's confirmation of the addition")
+                  (typeField "client-changed" <*> requiredField "time" "server's confirmation of the addition")
+              )
+          )
+          ( disjointEitherCodec
+              ( disjointEitherCodec
+                  ( disjointEitherCodec
+                      (typeField "client-deleted" <*> pure ())
+                      (typeField "server-added" <*> timedObjectCodec)
+                  )
+                  ( disjointEitherCodec
+                      (typeField "server-changed" <*> timedObjectCodec)
+                      (typeField "server-deleted" <*> pure ())
+                  )
+              )
+              ( disjointEitherCodec
+                  ( disjointEitherCodec
+                      (typeField "conflict" <*> timedObjectCodec)
+                      (typeField "conflict-client-deleted" <*> timedObjectCodec)
+                  )
+                  (typeField "conflict-server-deleted" <*> pure ())
+              )
+          )
+    where
+      f = \case
+        Left (Left (Left ())) -> ItemSyncResponseInSyncEmpty
+        Left (Left (Right ())) -> ItemSyncResponseInSyncFull
+        Left (Right (Left st)) -> ItemSyncResponseClientAdded st
+        Left (Right (Right st)) -> ItemSyncResponseClientChanged st
+        Right (Left (Left (Left ()))) -> ItemSyncResponseClientDeleted
+        Right (Left (Left (Right tv))) -> ItemSyncResponseServerAdded tv
+        Right (Left (Right (Left tv))) -> ItemSyncResponseServerChanged tv
+        Right (Left (Right (Right ()))) -> ItemSyncResponseServerDeleted
+        Right (Right (Left (Left tv))) -> ItemSyncResponseConflict tv
+        Right (Right (Left (Right tv))) -> ItemSyncResponseConflictClientDeleted tv
+        Right (Right (Right ())) -> ItemSyncResponseConflictServerDeleted
+      g = \case
+        ItemSyncResponseInSyncEmpty -> Left (Left (Left ()))
+        ItemSyncResponseInSyncFull -> Left (Left (Right ()))
+        ItemSyncResponseClientAdded st -> Left (Right (Left st))
+        ItemSyncResponseClientChanged st -> Left (Right (Right st))
+        ItemSyncResponseClientDeleted -> Right (Left (Left (Left ())))
+        ItemSyncResponseServerAdded tv -> Right (Left (Left (Right tv)))
+        ItemSyncResponseServerChanged tv -> Right (Left (Right (Left tv)))
+        ItemSyncResponseServerDeleted -> Right (Left (Right (Right ())))
+        ItemSyncResponseConflict tv -> Right (Right (Left (Left tv)))
+        ItemSyncResponseConflictClientDeleted tv -> Right (Right (Left (Right tv)))
+        ItemSyncResponseConflictServerDeleted -> Right (Right (Right ()))
 
-instance ToJSON a => ToJSON (ItemSyncResponse a) where
-  toJSON isr =
-    object $
-      let o s rest = ("type" .= (s :: String)) : rest
-          oe s = o s []
-       in case isr of
-            ItemSyncResponseInSyncEmpty -> oe "in-sync-empty"
-            ItemSyncResponseInSyncFull -> oe "in-sync-full"
-            ItemSyncResponseClientAdded t -> o "client-added" ["time" .= t]
-            ItemSyncResponseClientChanged t -> o "client-changed" ["time" .= t]
-            ItemSyncResponseClientDeleted -> oe "client-deleted"
-            ItemSyncResponseServerAdded Timed {..} ->
-              o "server-added" ["value" .= timedValue, "time" .= timedTime]
-            ItemSyncResponseServerChanged Timed {..} ->
-              o "server-changed" ["value" .= timedValue, "time" .= timedTime]
-            ItemSyncResponseServerDeleted -> oe "server-deleted"
-            ItemSyncResponseConflict a -> o "conflict" ["value" .= a]
-            ItemSyncResponseConflictClientDeleted a -> o "conflict-client-deleted" ["value" .= a]
-            ItemSyncResponseConflictServerDeleted -> oe "conflict-server-deleted"
+      typeField :: Text -> ObjectCodec b (a -> a)
+      typeField typeName = id <$ requiredFieldWith' "type" (literalTextCodec typeName) .= const typeName
 
 -- | Produce an 'ItemSyncRequest' from a 'ClientItem'.
 --

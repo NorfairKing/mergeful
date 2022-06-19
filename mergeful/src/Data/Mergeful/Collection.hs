@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -107,11 +108,12 @@ module Data.Mergeful.Collection
   )
 where
 
+import Autodocodec
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
 import Control.Monad.State
-import Data.Aeson
+import Data.Aeson (FromJSON, FromJSONKey (..), ToJSON, ToJSONKey (..))
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -132,11 +134,16 @@ import GHC.Generics (Generic)
 newtype ClientId = ClientId
   { unClientId :: Word64
   }
-  deriving (Show, Eq, Ord, Enum, Bounded, Generic, ToJSON, ToJSONKey, FromJSON, FromJSONKey)
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving newtype (Enum, Bounded, ToJSONKey, FromJSONKey)
+  deriving (FromJSON, ToJSON) via (Autodocodec ClientId)
 
 instance Validity ClientId
 
 instance NFData ClientId
+
+instance HasCodec ClientId where
+  codec = dimapCodec ClientId unClientId codec
 
 data ClientStore ci si a = ClientStore
   { -- | These items are new locally but have not been synced to the server yet.
@@ -150,7 +157,8 @@ data ClientStore ci si a = ClientStore
     -- but the server has not been notified of that yet.
     clientStoreDeletedItems :: !(Map si ServerTime)
   }
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ClientStore ci si a))
 
 instance
   (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
@@ -171,24 +179,24 @@ instance
 instance (NFData ci, NFData si, NFData a) => NFData (ClientStore ci si a)
 
 instance
-  (Ord ci, Ord si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
-  FromJSON (ClientStore ci si a)
+  ( Ord ci,
+    FromJSONKey ci,
+    ToJSONKey ci,
+    Ord si,
+    FromJSONKey si,
+    ToJSONKey si,
+    Eq a,
+    HasCodec a
+  ) =>
+  HasCodec (ClientStore ci si a)
   where
-  parseJSON =
-    withObject "ClientStore" $ \o ->
-      ClientStore <$> o .:? "added" .!= M.empty <*> o .:? "synced" .!= M.empty
-        <*> o .:? "changed" .!= M.empty
-        <*> o .:? "deleted" .!= M.empty
-
-instance (ToJSONKey ci, ToJSONKey si, ToJSON a) => ToJSON (ClientStore ci si a) where
-  toJSON ClientStore {..} =
-    object $
-      catMaybes
-        [ jNull "added" clientStoreAddedItems,
-          jNull "synced" clientStoreSyncedItems,
-          jNull "changed" clientStoreSyncedButChangedItems,
-          jNull "deleted" clientStoreDeletedItems
-        ]
+  codec =
+    object "ClientStore" $
+      ClientStore
+        <$> optionalFieldWithOmittedDefault "added" M.empty "added items" .= clientStoreAddedItems
+        <*> optionalFieldWithOmittedDefault "synced" M.empty "synced items" .= clientStoreSyncedItems
+        <*> optionalFieldWithOmittedDefault "changed" M.empty "changed items" .= clientStoreSyncedButChangedItems
+        <*> optionalFieldWithOmittedDefault "deleted" M.empty "deleted items" .= clientStoreDeletedItems
 
 -- | A client store to start with.
 --
@@ -338,11 +346,22 @@ newtype ServerStore si a = ServerStore
     -- they were last synced.
     serverStoreItems :: Map si (Timed a)
   }
-  deriving (Show, Eq, Generic, FromJSON, ToJSON)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ServerStore si a))
 
 instance (Validity si, Show si, Ord si, Validity a) => Validity (ServerStore si a)
 
 instance (NFData si, NFData a) => NFData (ServerStore si a)
+
+instance
+  ( Ord si,
+    FromJSONKey si,
+    ToJSONKey si,
+    HasCodec a
+  ) =>
+  HasCodec (ServerStore si a)
+  where
+  codec = dimapCodec ServerStore serverStoreItems codec
 
 -- | A server store to start with
 --
@@ -362,7 +381,8 @@ data SyncRequest ci si a = SyncRequest
     -- but the server has not been notified of that yet.
     syncRequestDeletedItems :: !(Map si ServerTime)
   }
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (SyncRequest ci si a))
 
 instance
   (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
@@ -383,24 +403,24 @@ instance
 instance (NFData ci, NFData si, NFData a) => NFData (SyncRequest ci si a)
 
 instance
-  (Ord ci, Ord si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
-  FromJSON (SyncRequest ci si a)
+  ( Ord ci,
+    FromJSONKey ci,
+    ToJSONKey ci,
+    Ord si,
+    FromJSONKey si,
+    ToJSONKey si,
+    Eq a,
+    HasCodec a
+  ) =>
+  HasCodec (SyncRequest ci si a)
   where
-  parseJSON =
-    withObject "SyncRequest" $ \o ->
-      SyncRequest <$> o .:? "added" .!= M.empty <*> o .:? "synced" .!= M.empty
-        <*> o .:? "changed" .!= M.empty
-        <*> o .:? "deleted" .!= M.empty
-
-instance (ToJSONKey ci, ToJSONKey si, ToJSON a) => ToJSON (SyncRequest ci si a) where
-  toJSON SyncRequest {..} =
-    object $
-      catMaybes
-        [ jNull "added" syncRequestNewItems,
-          jNull "synced" syncRequestKnownItems,
-          jNull "changed" syncRequestKnownButChangedItems,
-          jNull "deleted" syncRequestDeletedItems
-        ]
+  codec =
+    object "SyncRequest" $
+      SyncRequest
+        <$> optionalFieldWithOmittedDefault "added" M.empty "new items" .= syncRequestNewItems
+        <*> optionalFieldWithOmittedDefault "synced" M.empty "known items" .= syncRequestKnownItems
+        <*> optionalFieldWithOmittedDefault "changed" M.empty "known but changed items" .= syncRequestKnownButChangedItems
+        <*> optionalFieldWithOmittedDefault "deleted" M.empty "deleted items" .= syncRequestDeletedItems
 
 -- | An intial 'SyncRequest' to start with.
 --
@@ -418,17 +438,19 @@ data ClientAddition i = ClientAddition
   { clientAdditionId :: !i,
     clientAdditionServerTime :: !ServerTime
   }
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ClientAddition i))
 
 instance Validity i => Validity (ClientAddition i)
 
 instance NFData i => NFData (ClientAddition i)
 
-instance FromJSON i => FromJSON (ClientAddition i) where
-  parseJSON = withObject "ClientAddition" $ \o -> ClientAddition <$> o .: "id" <*> o .: "time"
-
-instance ToJSON i => ToJSON (ClientAddition i) where
-  toJSON ClientAddition {..} = object ["id" .= clientAdditionId, "time" .= clientAdditionServerTime]
+instance HasCodec i => HasCodec (ClientAddition i) where
+  codec =
+    object "ClientAddition" $
+      ClientAddition
+        <$> requiredField "id" "client-side identifier" .= clientAdditionId
+        <*> requiredField "time" "server-side time" .= clientAdditionServerTime
 
 data SyncResponse ci si a = SyncResponse
   { -- | The client added these items and server has succesfully been made aware of that.
@@ -471,7 +493,8 @@ data SyncResponse ci si a = SyncResponse
     -- or deal with the conflicts somehow, and then try to re-sync.
     syncResponseConflictsServerDeleted :: !(Set si)
   }
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
+  deriving (FromJSON, ToJSON) via (Autodocodec (SyncResponse ci si a))
 
 instance
   (Validity ci, Validity si, Show ci, Show si, Ord ci, Ord si, Validity a) =>
@@ -498,37 +521,31 @@ instance
 instance (NFData ci, NFData si, NFData a) => NFData (SyncResponse ci si a)
 
 instance
-  (Ord ci, Ord si, FromJSON ci, FromJSON si, FromJSONKey ci, FromJSONKey si, FromJSON a) =>
-  FromJSON (SyncResponse ci si a)
+  ( Ord ci,
+    FromJSONKey ci,
+    ToJSONKey ci,
+    HasCodec ci,
+    Ord si,
+    FromJSONKey si,
+    ToJSONKey si,
+    HasCodec si,
+    Eq a,
+    HasCodec a
+  ) =>
+  HasCodec (SyncResponse ci si a)
   where
-  parseJSON =
-    withObject "SyncResponse" $ \o ->
-      SyncResponse <$> o .:? "client-added" .!= M.empty <*> o .:? "client-changed" .!= M.empty
-        <*> o .:? "client-deleted" .!= S.empty
-        <*> o .:? "server-added" .!= M.empty
-        <*> o .:? "server-changed" .!= M.empty
-        <*> o .:? "server-deleted" .!= S.empty
-        <*> o .:? "conflict" .!= M.empty
-        <*> o .:? "conflict-client-deleted" .!= M.empty
-        <*> o .:? "conflict-server-deleted" .!= S.empty
-
-instance
-  (ToJSON ci, ToJSON si, ToJSONKey ci, ToJSONKey si, ToJSON a) =>
-  ToJSON (SyncResponse ci si a)
-  where
-  toJSON SyncResponse {..} =
-    object $
-      catMaybes
-        [ jNull "client-added" syncResponseClientAdded,
-          jNull "client-changed" syncResponseClientChanged,
-          jNull "client-deleted" syncResponseClientDeleted,
-          jNull "server-added" syncResponseServerAdded,
-          jNull "server-changed" syncResponseServerChanged,
-          jNull "server-deleted" syncResponseServerDeleted,
-          jNull "conflict" syncResponseConflicts,
-          jNull "conflict-client-deleted" syncResponseConflictsClientDeleted,
-          jNull "conflict-server-deleted" syncResponseConflictsServerDeleted
-        ]
+  codec =
+    object "SyncResponse" $
+      SyncResponse
+        <$> optionalFieldWithOmittedDefault "client-added" M.empty "items added by the client" .= syncResponseClientAdded
+        <*> optionalFieldWithOmittedDefault "client-changed" M.empty "items changed by the client" .= syncResponseClientChanged
+        <*> optionalFieldWithOmittedDefault "client-deleted" S.empty "items deleted by the client" .= syncResponseClientDeleted
+        <*> optionalFieldWithOmittedDefault "server-added" M.empty "items added by the server" .= syncResponseServerAdded
+        <*> optionalFieldWithOmittedDefault "server-changed" M.empty "items changed by the server" .= syncResponseServerChanged
+        <*> optionalFieldWithOmittedDefault "server-deleted" S.empty "items deleted by the server" .= syncResponseServerDeleted
+        <*> optionalFieldWithOmittedDefault "conflict" M.empty "items that were changed simultaneously" .= syncResponseConflicts
+        <*> optionalFieldWithOmittedDefault "conflict-client-deleted" M.empty "items that the server changed while the client deleted it" .= syncResponseConflictsClientDeleted
+        <*> optionalFieldWithOmittedDefault "conflict-server-deleted" S.empty "items that the client changed while the server deleted it" .= syncResponseConflictsServerDeleted
 
 -- | A sync response to start with.
 --
@@ -546,12 +563,6 @@ emptySyncResponse =
       syncResponseConflictsClientDeleted = M.empty,
       syncResponseConflictsServerDeleted = S.empty
     }
-
-jNull :: (Foldable f, ToJSON (f b)) => Text -> f b -> Maybe (Text, Value)
-jNull n s =
-  if null s
-    then Nothing
-    else Just $ n .= s
 
 -- | Produce an 'SyncRequest' from a 'ClientStore'.
 --

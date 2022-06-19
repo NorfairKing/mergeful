@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.5.
+-- This file has been generated from package.yaml by hpack version 0.34.7.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 37f008da781849ca9c1a84ecbd2450ba8bd768616ff930b2473704f1e8190bee
+-- hash: 7304863ceeb04cf551532d5d26d7dbe566e6daa947b5c5bf031bf851db02bde2
 
 name:           mergeful
 version:        0.2.0.0
@@ -38,6 +38,7 @@ library
   ghc-options: -Wall -fwarn-redundant-constraints
   build-depends:
       aeson
+    , autodocodec
     , base >=4.7 && <5
     , containers
     , deepseq
