@@ -19,7 +19,7 @@ import TestUtils
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
 spec :: Spec
-spec = modifyMaxShrinks (const 0) $
+spec =
   twoClientsSpec $ do
     describe "sanity" $ do
       describe "setupClient & clientGetStore" $ do
@@ -510,7 +510,9 @@ data TestEnv = TestEnv
   }
 
 twoClientsSpec :: SpecWith TestEnv -> Spec
-twoClientsSpec = around withTestEnv
+twoClientsSpec =
+  modifyMaxSuccess (`div` 10)
+    . around withTestEnv
 
 withTestEnv :: (TestEnv -> IO a) -> IO a
 withTestEnv func =
