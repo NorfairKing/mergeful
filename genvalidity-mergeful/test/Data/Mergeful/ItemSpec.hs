@@ -9,10 +9,10 @@ where
 import Data.GenValidity.Mergeful.Item ()
 import Data.Mergeful.Item
 import Data.Mergeful.Timed
-import Test.Hspec
 import Test.QuickCheck
-import Test.Validity
-import Test.Validity.Aeson
+import Test.Syd hiding (Timed (..))
+import Test.Syd.Validity
+import Test.Syd.Validity.Aeson
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 

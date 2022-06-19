@@ -22,12 +22,10 @@ import qualified Data.Set as S
 import Data.UUID
 import GHC.Generics (Generic)
 import System.Random
-import Test.Hspec
-import Test.Hspec.QuickCheck
 import Test.QuickCheck
-import Test.Validity
-import Test.Validity.Aeson
-import Text.Show.Pretty
+import Test.Syd hiding (Timed (..))
+import Test.Syd.Validity
+import Test.Syd.Validity.Aeson
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 

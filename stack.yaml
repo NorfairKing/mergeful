@@ -26,29 +26,10 @@ extra-deps:
   - github: NorfairKing/validity
     commit: d88be911a7e2a84f6c089e9269aaed8d10a74acd
     subdirs:
-    - genvalidity
-    - genvalidity-aeson
-    - genvalidity-bytestring
-    - genvalidity-containers
-    - genvalidity-criterion
-    - genvalidity-hspec
-    - genvalidity-hspec-aeson
-    - genvalidity-hspec-binary
-    - genvalidity-hspec-cereal
-    - genvalidity-hspec-hashable
-    - genvalidity-hspec-optics
-    - genvalidity-path
-    - genvalidity-persistent
-    - genvalidity-property
-    - genvalidity-scientific
-    - genvalidity-text
-    - genvalidity-time
-    - genvalidity-unordered-containers
-    - genvalidity-uuid
-    - genvalidity-vector
     - validity
     - validity-aeson
     - validity-bytestring
+    - validity-case-insensitive
     - validity-containers
     - validity-path
     - validity-persistent
@@ -59,6 +40,27 @@ extra-deps:
     - validity-unordered-containers
     - validity-uuid
     - validity-vector
+    - genvalidity
+    - genvalidity-aeson
+    - genvalidity-bytestring
+    - genvalidity-case-insensitive
+    - genvalidity-containers
+    - genvalidity-criterion
+    - genvalidity-path
+    - genvalidity-persistent
+    - genvalidity-property
+    - genvalidity-scientific
+    - genvalidity-sydtest
+    - genvalidity-sydtest-aeson
+    - genvalidity-sydtest-hashable
+    - genvalidity-sydtest-lens
+    - genvalidity-sydtest-persistent
+    - genvalidity-text
+    - genvalidity-time
+    - genvalidity-unordered-containers
+    - genvalidity-uuid
+    - genvalidity-vector
+
 nix:
   shell-file: shell.nix
 

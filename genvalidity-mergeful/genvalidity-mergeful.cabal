@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.5.
+-- This file has been generated from package.yaml by hpack version 0.34.7.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cbd428ce14fa4e08e9043f7159b81f7a357d2ae9727964654376225bfc846464
+-- hash: efec286976cd0274baa1a2a8521a8a9c5947f92aceea478c9df86979de9f6ab8
 
 name:           genvalidity-mergeful
 version:        0.3.0.0
@@ -57,19 +57,21 @@ test-suite mergeful-test
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-tool-depends:
+      sydtest-discover:sydtest-discover
   build-depends:
       QuickCheck
     , base <5
     , containers
-    , genvalidity-hspec
-    , genvalidity-hspec-aeson
     , genvalidity-mergeful
+    , genvalidity-sydtest
+    , genvalidity-sydtest-aeson
     , genvalidity-uuid
-    , hspec
     , mergeful
     , mtl
     , pretty-show
     , random
+    , sydtest
     , time
     , uuid
   default-language: Haskell2010

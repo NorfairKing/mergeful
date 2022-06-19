@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.5.
+-- This file has been generated from package.yaml by hpack version 0.34.7.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7c5ff3a9a2e43aeeae021a051ff65938d46576b1867dcd38c679d55898ca8441
+-- hash: 2c0a29f78b8a5c542fa95c7f8f6732560a3a73e9b1a5d182531b5e6bb77fe95a
 
 name:           mergeful-persistent
 version:        0.1.0.0
@@ -59,10 +59,9 @@ test-suite mergeful-persistent-test
     , base >=4.11 && <5
     , containers
     , genvalidity >=1.0
-    , genvalidity-hspec
     , genvalidity-mergeful
     , genvalidity-persistent
-    , hspec
+    , genvalidity-sydtest
     , mergeful
     , mergeful-persistent
     , monad-logger
@@ -72,6 +71,7 @@ test-suite mergeful-persistent-test
     , persistent
     , persistent-sqlite
     , persistent-template
+    , sydtest
     , text
     , validity
     , validity-persistent

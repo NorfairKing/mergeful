@@ -26,8 +26,9 @@ library:
 
 tests:
   mergeful-test:
-    main:                Spec.hs
-    source-dirs:         test
+    main: Spec.hs
+    source-dirs: test
+    build-tools: sydtest-discover
     ghc-options:
     - -threaded
     - -rtsopts
@@ -35,11 +36,11 @@ tests:
     dependencies:
       - QuickCheck
       - containers
-      - genvalidity-hspec
-      - genvalidity-hspec-aeson
+      - genvalidity-sydtest
+      - genvalidity-sydtest-aeson
       - genvalidity-mergeful
       - genvalidity-uuid
-      - hspec
+      - sydtest
       - mergeful
       - mtl
       - pretty-show
@@ -49,8 +50,8 @@ tests:
 
 benchmarks:
   mergeful-bench:
-    main:                Bench.hs
-    source-dirs:         bench
+    main: Bench.hs
+    source-dirs: bench
     ghc-options:
     - -threaded
     - -rtsopts

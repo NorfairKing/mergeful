@@ -12,9 +12,8 @@ import qualified Data.Map as M
 import Data.Mergeful
 import qualified Data.Set as S
 import Database.Persist.Sql
-import Test.Hspec
-import Test.Hspec.QuickCheck
-import Test.Validity
+import Test.Syd hiding (Timed (..), runTest)
+import Test.Syd.Validity
 import TestUtils
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}

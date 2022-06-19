@@ -37,10 +37,10 @@ tests:
       - QuickCheck
       - containers
       - genvalidity >= 1.0
-      - genvalidity-hspec
+      - genvalidity-sydtest
       - genvalidity-mergeful
       - genvalidity-persistent
-      - hspec
+      - sydtest
       - mergeful
       - mergeful-persistent
       - monad-logger
