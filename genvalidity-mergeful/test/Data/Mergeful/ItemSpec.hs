@@ -1,4 +1,6 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Data.Mergeful.ItemSpec
@@ -6,13 +8,19 @@ module Data.Mergeful.ItemSpec
   )
 where
 
+import Autodocodec
+import Autodocodec.Yaml
+import Data.Data
 import Data.GenValidity.Mergeful.Item ()
 import Data.Mergeful.Item
 import Data.Mergeful.Timed
+import Data.Word
 import Test.QuickCheck
 import Test.Syd hiding (Timed (..))
 import Test.Syd.Validity
 import Test.Syd.Validity.Aeson
+import Test.Syd.Validity.Utils
+import Text.Colour
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
@@ -23,14 +31,28 @@ forAllSubsequent func =
 
 spec :: Spec
 spec = do
-  genValidSpec @(ClientItem Int)
-  jsonSpec @(ClientItem Int)
-  genValidSpec @(ServerItem Int)
-  jsonSpec @(ServerItem Int)
-  genValidSpec @(ItemSyncRequest Int)
-  jsonSpec @(ItemSyncRequest Int)
-  genValidSpec @(ItemSyncResponse Int)
-  jsonSpec @(ItemSyncResponse Int)
+  let yamlSchemaSpec :: forall a. (Typeable a, GenValid a, HasCodec a) => FilePath -> Spec
+      yamlSchemaSpec filePath = do
+        it ("outputs the same schema as before for " <> nameOf @a) $
+          pureGoldenByteStringFile
+            ("test_resources/item/" <> filePath <> ".txt")
+            (renderChunksBS With24BitColours $ schemaChunksViaCodec @a)
+  describe "ClientItem" $ do
+    genValidSpec @(ClientItem Word8)
+    jsonSpec @(ClientItem Word8)
+    yamlSchemaSpec @(ClientItem Word8) "client"
+  describe "ServerItem" $ do
+    genValidSpec @(ServerItem Word8)
+    jsonSpec @(ServerItem Word8)
+    yamlSchemaSpec @(ServerItem Word8) "server"
+  describe "ItemSyncRequest" $ do
+    genValidSpec @(ItemSyncRequest Word8)
+    jsonSpec @(ItemSyncRequest Word8)
+    yamlSchemaSpec @(ItemSyncRequest Word8) "request"
+  describe "ItemSyncResponse" $ do
+    genValidSpec @(ItemSyncResponse Word8)
+    jsonSpec @(ItemSyncResponse Word8)
+    yamlSchemaSpec @(ItemSyncResponse Word8) "response"
   describe "makeItemSyncRequest" $
     it "produces valid requests" $
       producesValid (makeItemSyncRequest @Int)

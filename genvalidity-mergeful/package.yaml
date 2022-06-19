@@ -8,6 +8,7 @@ copyright:           "Copyright: (c) 2019-2022 Tom Sydney Kerckhove"
 
 extra-source-files:
 - CHANGELOG.md
+- test_resources/**/*
 
 description:         Please see the README on GitHub at <https://github.com/NorfairKing/mergeful#readme>
 
@@ -35,16 +36,19 @@ tests:
     - -with-rtsopts=-N
     dependencies:
       - QuickCheck
+      - autodocodec
+      - autodocodec-yaml
       - containers
+      - genvalidity-mergeful
       - genvalidity-sydtest
       - genvalidity-sydtest-aeson
-      - genvalidity-mergeful
       - genvalidity-uuid
-      - sydtest
       - mergeful
       - mtl
       - pretty-show
       - random
+      - safe-coloured-text
+      - sydtest
       - time
       - uuid
 

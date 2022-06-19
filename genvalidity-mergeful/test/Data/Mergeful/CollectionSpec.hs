@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
@@ -10,7 +11,10 @@ module Data.Mergeful.CollectionSpec
   )
 where
 
+import Autodocodec
+import Autodocodec.Yaml
 import Control.Monad.State
+import Data.Data
 import Data.Functor.Identity
 import Data.GenValidity.Mergeful ()
 import Data.GenValidity.Mergeful.Item ()
@@ -20,29 +24,52 @@ import qualified Data.Map as M
 import Data.Mergeful
 import qualified Data.Set as S
 import Data.UUID
+import Data.Word
 import GHC.Generics (Generic)
 import System.Random
 import Test.QuickCheck
 import Test.Syd hiding (Timed (..))
 import Test.Syd.Validity
 import Test.Syd.Validity.Aeson
+import Test.Syd.Validity.Utils
+import Text.Colour
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
 spec :: Spec
 spec = modifyMaxShrinks (min 0) $ do
-  genValidSpec @ClientId
-  jsonSpec @ClientId
-  genValidSpec @(ClientStore ClientId Int Int)
-  jsonSpec @(ClientStore ClientId Int Int)
-  genValidSpec @(ServerStore Int Int)
-  jsonSpec @(ServerStore Int Int)
-  genValidSpec @(SyncRequest ClientId Int Int)
-  jsonSpec @(SyncRequest ClientId Int Int)
-  genValidSpec @(ClientAddition Int)
-  jsonSpec @(ClientAddition Int)
-  genValidSpec @(SyncResponse ClientId Int Int)
-  jsonSpec @(SyncResponse ClientId Int Int)
+  let yamlSchemaSpec :: forall a. (Typeable a, GenValid a, HasCodec a) => FilePath -> Spec
+      yamlSchemaSpec filePath = do
+        it ("outputs the same schema as before for " <> nameOf @a) $
+          pureGoldenByteStringFile
+            ("test_resources/collection/" <> filePath <> ".txt")
+            (renderChunksBS With24BitColours $ schemaChunksViaCodec @a)
+
+  describe "ClientId" $ do
+    genValidSpec @ClientId
+    jsonSpec @ClientId
+    yamlSchemaSpec @ClientId "client-id"
+  describe "ClientStore" $ do
+    genValidSpec @(ClientStore ClientId Word8 Word8)
+    jsonSpec @(ClientStore ClientId Word8 Word8)
+    yamlSchemaSpec @(ClientStore ClientId Word8 Word8) "client-store"
+  describe "ServerStore" $ do
+    genValidSpec @(ServerStore Word8 Word8)
+    jsonSpec @(ServerStore Word8 Word8)
+    yamlSchemaSpec @(ServerStore Word8 Word8) "server-store"
+  describe "SyncRequest" $ do
+    genValidSpec @(SyncRequest ClientId Word8 Word8)
+    jsonSpec @(SyncRequest ClientId Word8 Word8)
+    yamlSchemaSpec @(SyncRequest ClientId Word8 Word8) "request"
+  describe "ClientAddition" $ do
+    genValidSpec @(ClientAddition Word8)
+    jsonSpec @(ClientAddition Word8)
+    yamlSchemaSpec @(ClientAddition Word8) "client-addition"
+  describe "SyncResponse" $ do
+    genValidSpec @(SyncResponse ClientId Word8 Word8)
+    jsonSpec @(SyncResponse ClientId Word8 Word8)
+    yamlSchemaSpec @(SyncResponse ClientId Word8 Word8) "response"
+
   describe "initialClientStore" $
     it "is valid" $
       shouldBeValid $

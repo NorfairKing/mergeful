@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: efec286976cd0274baa1a2a8521a8a9c5947f92aceea478c9df86979de9f6ab8
+-- hash: 5fd191a0b9d70c8ae60b240ff9c092007d43c2dd0a254357282006a094e2524b
 
 name:           genvalidity-mergeful
 version:        0.3.0.0
@@ -19,6 +19,20 @@ license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     CHANGELOG.md
+    test_resources/collection/client-addition.txt
+    test_resources/collection/client-id.txt
+    test_resources/collection/client-store.txt
+    test_resources/collection/request.txt
+    test_resources/collection/response.txt
+    test_resources/collection/server-store.txt
+    test_resources/item/client.txt
+    test_resources/item/request.txt
+    test_resources/item/response.txt
+    test_resources/item/server.txt
+    test_resources/value/client.txt
+    test_resources/value/request.txt
+    test_resources/value/response.txt
+    test_resources/value/server.txt
 
 source-repository head
   type: git
@@ -61,6 +75,8 @@ test-suite mergeful-test
       sydtest-discover:sydtest-discover
   build-depends:
       QuickCheck
+    , autodocodec
+    , autodocodec-yaml
     , base <5
     , containers
     , genvalidity-mergeful
@@ -71,6 +87,7 @@ test-suite mergeful-test
     , mtl
     , pretty-show
     , random
+    , safe-coloured-text
     , sydtest
     , time
     , uuid

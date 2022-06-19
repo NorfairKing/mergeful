@@ -1,8 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 -- | Dealing with server times.
 --
@@ -46,7 +44,7 @@ instance Validity ServerTime
 instance NFData ServerTime
 
 instance HasCodec ServerTime where
-  codec = dimapCodec ServerTime unServerTime codec
+  codec = dimapCodec ServerTime unServerTime codec <?> "Server time"
 
 -- | A server time to start with.
 initialServerTime :: ServerTime

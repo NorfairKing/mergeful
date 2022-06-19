@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Data.Mergeful.ValueSpec
@@ -5,13 +7,19 @@ module Data.Mergeful.ValueSpec
   )
 where
 
+import Autodocodec
+import Autodocodec.Yaml
+import Data.Data
 import Data.GenValidity.Mergeful.Value ()
 import Data.Mergeful.Timed
 import Data.Mergeful.Value
+import Data.Word
 import Test.QuickCheck
 import Test.Syd hiding (Timed (..))
 import Test.Syd.Validity
 import Test.Syd.Validity.Aeson
+import Test.Syd.Validity.Utils
+import Text.Colour
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
@@ -22,14 +30,30 @@ forAllSubsequent func =
 
 spec :: Spec
 spec = do
-  genValidSpec @(ClientValue Int)
-  jsonSpec @(ClientValue Int)
-  genValidSpec @(ServerValue Int)
-  jsonSpec @(ServerValue Int)
-  genValidSpec @(ValueSyncRequest Int)
-  jsonSpec @(ValueSyncRequest Int)
-  genValidSpec @(ValueSyncResponse Int)
-  jsonSpec @(ValueSyncResponse Int)
+  let yamlSchemaSpec :: forall a. (Typeable a, GenValid a, HasCodec a) => FilePath -> Spec
+      yamlSchemaSpec filePath = do
+        it ("outputs the same schema as before for " <> nameOf @a) $
+          pureGoldenByteStringFile
+            ("test_resources/value/" <> filePath <> ".txt")
+            (renderChunksBS With24BitColours $ schemaChunksViaCodec @a)
+
+  describe "ClientValue" $ do
+    genValidSpec @(ClientValue Word8)
+    jsonSpec @(ClientValue Word8)
+    yamlSchemaSpec @(ClientValue Word8) "client"
+  describe "ServerValue" $ do
+    genValidSpec @(ServerValue Word8)
+    jsonSpec @(ServerValue Word8)
+    yamlSchemaSpec @(ServerValue Word8) "server"
+  describe "ValueSyncRequest" $ do
+    genValidSpec @(ValueSyncRequest Word8)
+    jsonSpec @(ValueSyncRequest Word8)
+    yamlSchemaSpec @(ValueSyncRequest Word8) "request"
+  describe "ValueSyncResponse" $ do
+    genValidSpec @(ValueSyncResponse Word8)
+    jsonSpec @(ValueSyncResponse Word8)
+    yamlSchemaSpec @(ValueSyncResponse Word8) "response"
+
   describe "makeValueSyncRequest" $
     it "produces valid requests" $
       producesValid (makeValueSyncRequest @Int)

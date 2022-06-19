@@ -114,15 +114,14 @@ import Control.DeepSeq
 import Control.Monad
 import Control.Monad.State
 import Data.Aeson (FromJSON, FromJSONKey (..), ToJSON, ToJSONKey (..))
+import Data.Kind
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe
 import Data.Mergeful.Item
 import Data.Mergeful.Timed
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Text (Text)
 import Data.Validity
 import Data.Validity.Containers ()
 import Data.Word
@@ -143,7 +142,7 @@ instance Validity ClientId
 instance NFData ClientId
 
 instance HasCodec ClientId where
-  codec = dimapCodec ClientId unClientId codec
+  codec = dimapCodec ClientId unClientId codec <?> "ClientId"
 
 data ClientStore ci si a = ClientStore
   { -- | These items are new locally but have not been synced to the server yet.
@@ -760,7 +759,7 @@ mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 --     - keep local
 --
 -- It is a lot of work to implement one of these, so make sure to have a look at the mergeful companion packages to see if maybe there is already one for your application domain.
-data ClientSyncProcessor ci si a (m :: * -> *) = ClientSyncProcessor
+data ClientSyncProcessor ci si a (m :: Type -> Type) = ClientSyncProcessor
   { -- | Get the synced values with keys in the given set
     clientSyncProcessorQuerySyncedButChangedValues :: !(Set si -> m (Map si (Timed a))),
     -- | Complete additions that were acknowledged by the server.
