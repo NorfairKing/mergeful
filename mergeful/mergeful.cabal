@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7304863ceeb04cf551532d5d26d7dbe566e6daa947b5c5bf031bf851db02bde2
+-- hash: 257049459827bc46485c454fe83f602efd9c34332aceaeb318f90a161c06082a
 
 name:           mergeful
-version:        0.2.0.0
+version:        0.3.0.0
 description:    Please see the README on GitHub at <https://github.com/NorfairKing/mergeful#readme>
 homepage:       https://github.com/NorfairKing/mergeful#readme
 bug-reports:    https://github.com/NorfairKing/mergeful/issues
