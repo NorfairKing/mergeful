@@ -1,11 +1,11 @@
-name:                mergeful-persistent
-version:             0.1.0.0
-github:              "NorfairKing/mergeful"
-license:             MIT
-author:              "Tom Sydney Kerckhove"
-maintainer:          "syd@cs-syd.eu"
-copyright:           "Copyright: (c) 2021-2022 Tom Sydney Kerckhove"
-synopsis:            Support for using mergeful from persistent-based databases
+name: mergeful-persistent
+version: 0.3.0.0
+github: "NorfairKing/mergeful"
+license: MIT
+author: "Tom Sydney Kerckhove"
+maintainer: "syd@cs-syd.eu"
+copyright: "Copyright: (c) 2021-2022 Tom Sydney Kerckhove"
+synopsis: Support for using mergeful from persistent-based databases
 
 extra-source-files:
 - CHANGELOG.md
@@ -29,6 +29,7 @@ tests:
   mergeful-persistent-test:
     main: Spec.hs
     source-dirs: test
+    build-tools: sydtest-discover
     ghc-options:
       - -threaded
       - -rtsopts

@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2c0a29f78b8a5c542fa95c7f8f6732560a3a73e9b1a5d182531b5e6bb77fe95a
+-- hash: faba285133aada68e4d976e31402a0c7d508de702a33208b4666124dce98c2ab
 
 name:           mergeful-persistent
-version:        0.1.0.0
+version:        0.3.0.0
 synopsis:       Support for using mergeful from persistent-based databases
 homepage:       https://github.com/NorfairKing/mergeful#readme
 bug-reports:    https://github.com/NorfairKing/mergeful/issues
@@ -54,6 +54,8 @@ test-suite mergeful-persistent-test
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-tool-depends:
+      sydtest-discover:sydtest-discover
   build-depends:
       QuickCheck
     , base >=4.11 && <5

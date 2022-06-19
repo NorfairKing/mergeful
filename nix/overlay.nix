@@ -1,4 +1,5 @@
 final: previous:
+with final.lib;
 with final.haskell.lib;
 let
   mergefulPkg = name:
@@ -16,12 +17,19 @@ in
       genvalidity-mergeful = mergefulPkg "genvalidity-mergeful";
       mergeful-persistent = mergefulPkg "mergeful-persistent";
     };
+
+  mergefulRelease =
+    final.symlinkJoin {
+      name = "mergeful-release";
+      paths = attrValues final.mergefulPackages;
+    };
+
   haskellPackages =
     previous.haskellPackages.override (
       old:
       {
         overrides =
-          final.lib.composeExtensions (old.overrides or (_: _: { })) (
+          composeExtensions (old.overrides or (_: _: { })) (
             self: super: final.mergefulPackages
           );
       }
