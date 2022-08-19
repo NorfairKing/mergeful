@@ -41,9 +41,9 @@ spec = modifyMaxShrinks (min 0) $ do
   let yamlSchemaSpec :: forall a. (Typeable a, GenValid a, HasCodec a) => FilePath -> Spec
       yamlSchemaSpec filePath = do
         it ("outputs the same schema as before for " <> nameOf @a) $
-          pureGoldenByteStringFile
+          pureGoldenTextFile
             ("test_resources/collection/" <> filePath <> ".txt")
-            (renderChunksBS With24BitColours $ schemaChunksViaCodec @a)
+            (renderChunksText With24BitColours $ schemaChunksViaCodec @a)
 
   describe "ClientId" $ do
     genValidSpec @ClientId

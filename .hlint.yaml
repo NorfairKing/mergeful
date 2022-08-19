@@ -5,6 +5,8 @@
 - ignore:
     name: "Use ||"
 - ignore:
+    name: "Use void"
+- ignore:
     name: "Reduce duplication"
     within:
       - "Data.GenValidity.Mergeful.Collection"
