@@ -4,3 +4,4 @@ stack.yaml.lock
 .pre-commit-config.yaml
 *~
 result*
+dist-newstyle/

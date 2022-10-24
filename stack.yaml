@@ -61,6 +61,7 @@ extra-deps:
     - genvalidity-uuid
     - genvalidity-vector
 
+system-ghc: true
 nix:
-  shell-file: shell.nix
-
+  enable: false
+with-hpack: hpack
