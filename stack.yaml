@@ -3,7 +3,14 @@ packages:
   - mergeful
   - genvalidity-mergeful
   - mergeful-persistent
-
+  - mergeful-dirforest
+  - genvalidity-mergeful-dirforest
+extra-deps:
+  - github: NorfairKing/dirforest
+    commit: 865c483a031d767f3c360529ca65b4bb4a3054de
+    subdirs:
+    - dirforest
+    - genvalidity-dirforest
 system-ghc: true
 nix:
   enable: false

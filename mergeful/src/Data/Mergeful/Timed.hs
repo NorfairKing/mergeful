@@ -59,7 +59,7 @@ data Timed a = Timed
   { timedValue :: !a,
     timedTime :: !ServerTime
   }
-  deriving stock (Show, Eq, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
   deriving (FromJSON, ToJSON) via (Autodocodec (Timed a))
 
 instance Validity a => Validity (Timed a)

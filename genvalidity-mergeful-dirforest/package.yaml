@@ -1,0 +1,37 @@
+name: genvalidity-mergeful-dirforest
+version: 0.0.0.0
+github: "NorfairKing/mergeful"
+license: MIT
+author: "Tom Sydney Kerckhove"
+maintainer: "syd@cs-syd.eu"
+copyright: "Copyright: (c) 2023 Tom Sydney Kerckhove"
+
+dependencies:
+- base <5
+
+library:
+  source-dirs: src
+  dependencies:
+    - genvalidity
+    - genvalidity-dirforest
+    - genvalidity-mergeful
+    - mergeful-dirforest
+
+tests:
+  mergeful-dirforest-test:
+    main: Spec.hs
+    source-dirs: test
+    build-tools: sydtest-discover
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+      - QuickCheck
+      - genvalidity-mergeful-dirforest
+      - genvalidity-sydtest
+      - genvalidity-sydtest-aeson
+      - mergeful
+      - mergeful-dirforest
+      - sydtest
+

@@ -1,0 +1,17 @@
+name: mergeful-dirforest
+version: 0.0.0.0
+github: "NorfairKing/mergeful"
+license: MIT
+author: "Tom Sydney Kerckhove"
+maintainer: "syd@cs-syd.eu"
+copyright: "Copyright: (c) 2023 Tom Sydney Kerckhove"
+
+library:
+  source-dirs: src
+  dependencies:
+    - base >= 4.7 && < 5
+    - aeson
+    - autodocodec
+    - dirforest
+    - mergeful
+    - validity
