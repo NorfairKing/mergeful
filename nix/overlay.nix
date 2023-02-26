@@ -28,6 +28,8 @@ with final.haskell.lib;
                     mergeful = mergefulPkg "mergeful";
                     genvalidity-mergeful = mergefulPkg "genvalidity-mergeful";
                     mergeful-persistent = mergefulPkg "mergeful-persistent";
+                    mergeful-dirforest = mergefulPkg "mergeful-dirforest";
+                    genvalidity-mergeful-dirforest = mergefulPkg "genvalidity-mergeful-dirforest";
                   };
               in
               {

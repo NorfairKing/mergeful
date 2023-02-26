@@ -7,7 +7,7 @@ packages:
   - genvalidity-mergeful-dirforest
 extra-deps:
   - github: NorfairKing/dirforest
-    commit: 865c483a031d767f3c360529ca65b4bb4a3054de
+    commit: 4bca1e591afbb3697677ac0db84a585d9f13c0ec
     subdirs:
     - dirforest
     - genvalidity-dirforest

@@ -93,7 +93,7 @@ data ClientItem a
     ClientItemSyncedButChanged !(Timed a)
   | -- | There was an item, and it has been deleted locally, but the server has not been made aware of this.
     ClientDeleted !ServerTime
-  deriving stock (Show, Eq, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
   deriving (FromJSON, ToJSON) via (Autodocodec (ClientItem a))
 
 instance Validity a => Validity (ClientItem a)

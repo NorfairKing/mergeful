@@ -11,6 +11,8 @@
     safe-coloured-text.flake = false;
     sydtest.url = "github:NorfairKing/sydtest";
     sydtest.flake = false;
+    dirforest.url = "github:NorfairKing/dirforest";
+    dirforest.flake = false;
     nixpkgs-22_11.url = "github:NixOS/nixpkgs?ref=nixos-22.11";
     nixpkgs-22_05.url = "github:NixOS/nixpkgs?ref=nixos-22.05";
     nixpkgs-21_11.url = "github:NixOS/nixpkgs?ref=nixos-21.11";
@@ -27,6 +29,7 @@
     , safe-coloured-text
     , autodocodec
     , sydtest
+    , dirforest
     }:
     let
       system = "x86_64-linux";
@@ -38,6 +41,7 @@
           (import (autodocodec + "/nix/overlay.nix"))
           (import (safe-coloured-text + "/nix/overlay.nix"))
           (import (sydtest + "/nix/overlay.nix"))
+          (import (dirforest + "/nix/overlay.nix"))
         ];
       };
       pkgs = pkgsFor nixpkgs;

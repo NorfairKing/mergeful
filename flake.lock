@@ -16,6 +16,22 @@
         "type": "github"
       }
     },
+    "dirforest": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1677326855,
+        "narHash": "sha256-nJ1PYmKZk8si+3abnof+yBAjvY+6pR/CCa4unHl9lwQ=",
+        "owner": "NorfairKing",
+        "repo": "dirforest",
+        "rev": "4bca1e591afbb3697677ac0db84a585d9f13c0ec",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NorfairKing",
+        "repo": "dirforest",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -189,6 +205,7 @@
     "root": {
       "inputs": {
         "autodocodec": "autodocodec",
+        "dirforest": "dirforest",
         "nixpkgs": "nixpkgs",
         "nixpkgs-21_11": "nixpkgs-21_11",
         "nixpkgs-22_05": "nixpkgs-22_05",

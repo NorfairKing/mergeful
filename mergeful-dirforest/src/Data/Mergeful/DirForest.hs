@@ -1,57 +1,56 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
--- Remove when the dirforest instance is in the right place.
-{-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Data.Mergeful.DirForest where
 
 import Autodocodec
 import Data.Aeson (FromJSON, ToJSON)
 import Data.DirForest
+import Data.Mergeful.Item
 import Data.Mergeful.Timed
 import Data.Validity
 import GHC.Generics (Generic)
 
 data DirForestSyncRequest a = DirForestSyncRequest
   deriving stock (Show, Eq, Generic)
-  deriving (FromJSON, ToJSON) via (DirForestSyncRequest a)
+  deriving (FromJSON, ToJSON) via (Autodocodec (DirForestSyncRequest a))
 
 instance Validity a => Validity (DirForestSyncRequest a)
 
 instance HasCodec a => HasCodec (DirForestSyncRequest a) where
-  codec = undefined
+  codec = object "DirForestSyncRequest" $ pure DirForestSyncRequest
 
 data DirForestSyncResponse a = DirForestSyncResponse
   deriving stock (Show, Eq, Generic)
-  deriving (FromJSON, ToJSON) via (DirForestSyncResponse a)
+  deriving (FromJSON, ToJSON) via (Autodocodec (DirForestSyncResponse a))
 
 instance Validity a => Validity (DirForestSyncResponse a)
 
 instance HasCodec a => HasCodec (DirForestSyncResponse a) where
-  codec = undefined
+  codec = object "DirForestSyncResponse" $ pure DirForestSyncResponse
 
-data ClientDirForest a = ClientDirForest
+newtype ClientDirForest a = ClientDirForest
+  { clientDirForest :: DirForest (ClientItem a)
+  }
   deriving stock (Show, Eq, Generic)
-  deriving (FromJSON, ToJSON) via (ClientDirForest a)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ClientDirForest a))
 
 instance Validity a => Validity (ClientDirForest a)
 
 instance HasCodec a => HasCodec (ClientDirForest a) where
-  codec = undefined
+  codec = dimapCodec ClientDirForest clientDirForest codec
 
 newtype ServerDirForest a = ServerDirForest
-  {serverDirForest :: DirForest (Timed a)}
+  { serverDirForest :: DirForest (Timed a)
+  }
   deriving stock (Show, Eq, Generic)
-  deriving (FromJSON, ToJSON) via (ServerDirForest a)
+  deriving (FromJSON, ToJSON) via (Autodocodec (ServerDirForest a))
 
 instance Validity a => Validity (ServerDirForest a)
 
 instance HasCodec a => HasCodec (ServerDirForest a) where
   codec = dimapCodec ServerDirForest serverDirForest codec
-
--- Move to the dirforest library
-instance HasCodec a => HasCodec (DirForest a) where
-  codec = undefined
 
 makeDirForestSyncRequest :: ClientDirForest a -> DirForestSyncRequest a
 makeDirForestSyncRequest = undefined
