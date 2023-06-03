@@ -77,17 +77,15 @@ spec = modifyMaxShrinks (min 0) $ do
   describe "addItemToClientStore" $ do
     it "produces valid stores" $ producesValid2 (addItemToClientStore @ClientId @Int @Int)
     it "makes the client store one bigger" $
-      forAllValid $
-        \cs ->
-          forAllValid $ \a ->
-            clientStoreSize @ClientId @Int @Int (addItemToClientStore a cs)
-              `shouldBe` (clientStoreSize cs + 1)
+      forAllValid $ \cs ->
+        forAllValid $ \a ->
+          clientStoreSize @ClientId @Int @Int (addItemToClientStore a cs)
+            `shouldBe` (clientStoreSize cs + 1)
     it "ensures that the added item is in fact in the result" $
-      forAllValid $
-        \cs ->
-          forAllValid $ \a ->
-            let cs' = addItemToClientStore @ClientId @Int @Int a cs
-             in a `elem` clientStoreAddedItems cs'
+      forAllValid $ \cs ->
+        forAllValid $ \a ->
+          let cs' = addItemToClientStore @ClientId @Int @Int a cs
+           in a `elem` clientStoreAddedItems cs'
   describe "markItemDeletedInClientStore" $ do
     it "produces valid stores" $
       producesValid2 (markItemDeletedInClientStore @ClientId @Int @Int)
@@ -153,64 +151,61 @@ spec = modifyMaxShrinks (min 0) $ do
   xdescribe "There must not be id conflicts" $ do
     describe "mergeSyncResponseFromServer" $
       it "produces valid requests" $
-        forAllValid $
-          \store ->
-            forAllValid $ \response ->
-              let res = mergeSyncResponseFromServer @ClientId @Int @Int store response
-               in case prettyValidate res of
-                    Right _ -> pure ()
-                    Left err ->
-                      expectationFailure $
-                        unlines
-                          [ "Store:",
-                            ppShow store,
-                            "Response:",
-                            ppShow response,
-                            "Invalid result:",
-                            ppShow res,
-                            "error:",
-                            err
-                          ]
+        forAllValid $ \store ->
+          forAllValid $ \response ->
+            let res = mergeSyncResponseFromServer @ClientId @Int @Int store response
+             in case prettyValidate res of
+                  Right _ -> pure ()
+                  Left err ->
+                    expectationFailure $
+                      unlines
+                        [ "Store:",
+                          ppShow store,
+                          "Response:",
+                          ppShow response,
+                          "Invalid result:",
+                          ppShow res,
+                          "error:",
+                          err
+                        ]
     describe "mergeSyncResponseFromClient" $
       it "produces valid requests" $
-        forAllValid $
-          \store ->
-            forAllValid $ \response ->
-              let res = mergeSyncResponseFromClient @ClientId @Int @Int store response
-               in case prettyValidate res of
-                    Right _ -> pure ()
-                    Left err ->
-                      expectationFailure $
-                        unlines
-                          [ "Store:",
-                            ppShow store,
-                            "Response:",
-                            ppShow response,
-                            "Invalid result:",
-                            ppShow res,
-                            "error:",
-                            err
-                          ]
+        forAllValid $ \store ->
+          forAllValid $ \response ->
+            let res = mergeSyncResponseFromClient @ClientId @Int @Int store response
+             in case prettyValidate res of
+                  Right _ -> pure ()
+                  Left err ->
+                    expectationFailure $
+                      unlines
+                        [ "Store:",
+                          ppShow store,
+                          "Response:",
+                          ppShow response,
+                          "Invalid result:",
+                          ppShow res,
+                          "error:",
+                          err
+                        ]
     describe "mergeSyncResponseUsingCRDT" $
       it "produces valid requests" $
-        forAllValid $
-          \store ->
-            forAllValid $ \response ->
-              let res = mergeSyncResponseUsingCRDT @ClientId @Int @Int max store response
-               in case prettyValidate res of
-                    Right _ -> pure ()
-                    Left err ->
-                      expectationFailure $
-                        unlines
-                          [ "Store:",
-                            ppShow store,
-                            "Response:",
-                            ppShow response,
-                            "Invalid result:",
-                            ppShow res,
-                            "error:",
-                            err
-                          ]
+        forAllValid $ \store ->
+          forAllValid $ \response ->
+            let res = mergeSyncResponseUsingCRDT @ClientId @Int @Int max store response
+             in case prettyValidate res of
+                  Right _ -> pure ()
+                  Left err ->
+                    expectationFailure $
+                      unlines
+                        [ "Store:",
+                          ppShow store,
+                          "Response:",
+                          ppShow response,
+                          "Invalid result:",
+                          ppShow res,
+                          "error:",
+                          err
+                        ]
   describe "processServerSync" $
     it "produces valid tuples of a response and a store" $
       producesValid2

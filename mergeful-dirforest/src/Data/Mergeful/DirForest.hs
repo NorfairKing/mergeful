@@ -58,5 +58,9 @@ makeDirForestSyncRequest = undefined
 processServerSync :: ServerDirForest a -> DirForestSyncRequest a -> (ServerDirForest a, DirForestSyncResponse a)
 processServerSync = undefined
 
-mergeDirForestSyncResponse :: ClientDirForest a -> DirForestSyncResponse a -> ClientDirForest a
+mergeDirForestSyncResponse ::
+  ItemMergeStrategy a ->
+  ClientDirForest a ->
+  DirForestSyncResponse a ->
+  ClientDirForest a
 mergeDirForestSyncResponse = undefined
