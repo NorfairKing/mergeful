@@ -154,7 +154,8 @@ instance NFData a => NFData (ServerItem a)
 instance HasCodec a => HasCodec (ServerItem a) where
   codec =
     object "ServerItem" $
-      dimapCodec f g $ possiblyJointEitherCodec timedObjectCodec (pure ())
+      dimapCodec f g $
+        possiblyJointEitherCodec timedObjectCodec (pure ())
     where
       f = \case
         Left tv -> ServerFull tv

@@ -747,20 +747,20 @@ noDifferentExceptForConflicts strat1 strat2 = do
                         not (S.null syncResponseConflictsServerDeleted)
                       ]
                   )
-                  $ expectationFailure $
-                    unlines
-                      [ "There was a difference between mergeFunc1 and mergeFunc2 that was somehow unrelated to the conflicts:",
-                        "syncResponseConflicts:",
-                        ppShow syncResponseConflicts,
-                        "syncResponseConflictsClientDeleted:",
-                        ppShow syncResponseConflictsClientDeleted,
-                        "syncResponseConflictsServerDeleted:",
-                        ppShow syncResponseConflictsServerDeleted,
-                        "client store after mergeFunc1:",
-                        ppShow cstoreA,
-                        "client store after mergeFunc2:",
-                        ppShow cstoreB
-                      ]
+                  $ expectationFailure
+                  $ unlines
+                    [ "There was a difference between mergeFunc1 and mergeFunc2 that was somehow unrelated to the conflicts:",
+                      "syncResponseConflicts:",
+                      ppShow syncResponseConflicts,
+                      "syncResponseConflictsClientDeleted:",
+                      ppShow syncResponseConflictsClientDeleted,
+                      "syncResponseConflictsServerDeleted:",
+                      ppShow syncResponseConflictsServerDeleted,
+                      "client store after mergeFunc1:",
+                      ppShow cstoreA,
+                      "client store after mergeFunc2:",
+                      ppShow cstoreB
+                    ]
 
 newtype D m a = D
   { unD :: StateT StdGen m a

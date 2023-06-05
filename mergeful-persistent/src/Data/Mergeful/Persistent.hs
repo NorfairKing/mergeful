@@ -5,6 +5,9 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+-- Because newer versions of persistent do not required a
+-- ToBackendKey SlBackend constraint in some places.
+{-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 
 module Data.Mergeful.Persistent
   ( -- * Client side

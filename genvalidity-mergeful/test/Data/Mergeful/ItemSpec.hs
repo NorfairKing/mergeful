@@ -155,24 +155,24 @@ spec = do
                 resp `shouldBe` ItemSyncResponseConflict (Timed i st')
       it
         "notices a server-deleted-conflict if the client has a deleted item and server has a modified item"
-        $ forAllValid $
-          \i ->
-            forAllSubsequent $ \(st, st') -> do
-              let store1 = ServerFull (Timed i st')
-                  req = ItemSyncRequestDeletedLocally st
-              let (resp, store2) = processServerItemSync @Int store1 req
-              store2 `shouldBe` store1
-              resp `shouldBe` ItemSyncResponseConflictClientDeleted (Timed i st')
+        $ forAllValid
+        $ \i ->
+          forAllSubsequent $ \(st, st') -> do
+            let store1 = ServerFull (Timed i st')
+                req = ItemSyncRequestDeletedLocally st
+            let (resp, store2) = processServerItemSync @Int store1 req
+            store2 `shouldBe` store1
+            resp `shouldBe` ItemSyncResponseConflictClientDeleted (Timed i st')
       it
         "notices a server-deleted-conflict if the client has a modified item and server has no item"
-        $ forAllValid $
-          \i ->
-            forAllValid $ \st -> do
-              let store1 = ServerEmpty
-                  req = ItemSyncRequestKnownButChanged (Timed i st)
-              let (resp, store2) = processServerItemSync @Int store1 req
-              store2 `shouldBe` store1
-              resp `shouldBe` ItemSyncResponseConflictServerDeleted
+        $ forAllValid
+        $ \i ->
+          forAllValid $ \st -> do
+            let store1 = ServerEmpty
+                req = ItemSyncRequestKnownButChanged (Timed i st)
+            let (resp, store2) = processServerItemSync @Int store1 req
+            store2 `shouldBe` store1
+            resp `shouldBe` ItemSyncResponseConflictServerDeleted
   describe "syncing" $ do
     describe "fromServer" $ do
       syncingSpec @Int mergeFromServer
