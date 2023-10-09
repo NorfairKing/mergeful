@@ -13,6 +13,7 @@ where
 
 import Autodocodec
 import Autodocodec.Yaml
+import Control.Monad
 import Control.Monad.State
 import Data.Data
 import Data.Functor.Identity

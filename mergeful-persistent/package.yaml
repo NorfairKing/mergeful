@@ -1,10 +1,10 @@
 name: mergeful-persistent
-version: 0.3.0.0
+version: 0.3.0.1
 github: "NorfairKing/mergeful"
 license: MIT
 author: "Tom Sydney Kerckhove"
 maintainer: "syd@cs-syd.eu"
-copyright: "Copyright: (c) 2021-2022 Tom Sydney Kerckhove"
+copyright: "Copyright: (c) 2021-2023 Tom Sydney Kerckhove"
 synopsis: Support for using mergeful from persistent-based databases
 
 extra-source-files:

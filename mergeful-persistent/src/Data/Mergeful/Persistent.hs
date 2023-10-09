@@ -1,9 +1,12 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -- Because newer versions of persistent do not required a
 -- ToBackendKey SlBackend constraint in some places.
@@ -131,6 +134,7 @@ clientMergeSyncResponseQuery ::
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
+    SafeToInsert record,
     MonadIO m
   ) =>
   -- | The server id field
@@ -180,6 +184,7 @@ clientSyncProcessor ::
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
+    SafeToInsert record,
     MonadIO m
   ) =>
   -- | The server id field
@@ -278,6 +283,7 @@ setupClientQuery ::
   forall record sid a m.
   ( PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
+    SafeToInsert record,
     MonadIO m
   ) =>
   (a -> record) ->
@@ -362,6 +368,7 @@ serverProcessSyncQuery ::
   ( PersistEntity record,
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
+    SafeToInsert record,
     MonadIO m
   ) =>
   -- | The server time field
@@ -398,6 +405,7 @@ serverSyncProcessor ::
   ( PersistEntity record,
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
+    SafeToInsert record,
     MonadIO m
   ) =>
   -- | The server time field
@@ -435,6 +443,7 @@ serverProcessSyncWithCustomIdQuery ::
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
+    SafeToInsert record,
     MonadIO m
   ) =>
   -- | The custom id field
@@ -480,6 +489,7 @@ serverSyncWithCustomIdProcessor ::
     PersistField sid,
     PersistEntityBackend record ~ SqlBackend,
     ToBackendKey SqlBackend record,
+    SafeToInsert record,
     MonadIO m
   ) =>
   -- | The custom id field
@@ -543,3 +553,7 @@ serverGetStoreQuery ::
   (Entity record -> (sid, Timed a)) ->
   SqlPersistT IO (ServerStore sid a)
 serverGetStoreQuery func = ServerStore . M.fromList . map func <$> selectList [] []
+
+#if !MIN_VERSION_persistent(2,14,0)
+type SafeToInsert a = a ~ a
+#endif

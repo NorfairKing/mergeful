@@ -6,7 +6,7 @@
 }:
 mkDerivation {
   pname = "mergeful-persistent";
-  version = "0.3.0.0";
+  version = "0.3.0.1";
   src = ./.;
   libraryHaskellDepends = [
     base containers mergeful microlens mtl persistent
