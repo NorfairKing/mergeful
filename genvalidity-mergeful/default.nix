@@ -7,7 +7,7 @@
 }:
 mkDerivation {
   pname = "genvalidity-mergeful";
-  version = "0.3.0.0";
+  version = "0.3.0.1";
   src = ./.;
   libraryHaskellDepends = [
     base containers genvalidity genvalidity-containers genvalidity-time

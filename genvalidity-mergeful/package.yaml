@@ -1,10 +1,10 @@
 name:                genvalidity-mergeful
-version:             0.3.0.0
+version:             0.3.0.1
 github:              "NorfairKing/mergeful"
 license:             MIT
 author:              "Tom Sydney Kerckhove"
 maintainer:          "syd@cs-syd.eu"
-copyright:           "Copyright: (c) 2019-2022 Tom Sydney Kerckhove"
+copyright:           "Copyright: (c) 2019-2023 Tom Sydney Kerckhove"
 
 extra-source-files:
 - CHANGELOG.md
