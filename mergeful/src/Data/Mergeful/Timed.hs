@@ -62,14 +62,14 @@ data Timed a = Timed
   deriving stock (Show, Eq, Generic)
   deriving (FromJSON, ToJSON) via (Autodocodec (Timed a))
 
-instance Validity a => Validity (Timed a)
+instance (Validity a) => Validity (Timed a)
 
-instance NFData a => NFData (Timed a)
+instance (NFData a) => NFData (Timed a)
 
-instance HasCodec a => HasCodec (Timed a) where
+instance (HasCodec a) => HasCodec (Timed a) where
   codec = object "Timed" timedObjectCodec
 
-timedObjectCodec :: HasCodec a => JSONObjectCodec (Timed a)
+timedObjectCodec :: (HasCodec a) => JSONObjectCodec (Timed a)
 timedObjectCodec =
   Timed
     <$> requiredField "value" "timed value" .= timedValue

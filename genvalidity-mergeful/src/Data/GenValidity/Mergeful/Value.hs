@@ -10,22 +10,22 @@ instance GenValid ChangedFlag where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenValid a => GenValid (ValueMergeResult a) where
+instance (GenValid a) => GenValid (ValueMergeResult a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenValid a => GenValid (ClientValue a) where
+instance (GenValid a) => GenValid (ClientValue a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenValid a => GenValid (ServerValue a) where
+instance (GenValid a) => GenValid (ServerValue a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenValid a => GenValid (ValueSyncRequest a) where
+instance (GenValid a) => GenValid (ValueSyncRequest a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
-instance GenValid a => GenValid (ValueSyncResponse a) where
+instance (GenValid a) => GenValid (ValueSyncResponse a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering

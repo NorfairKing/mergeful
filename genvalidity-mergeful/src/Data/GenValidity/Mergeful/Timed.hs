@@ -6,7 +6,7 @@ import Data.GenValidity
 import Data.Mergeful.Timed
 import Test.QuickCheck
 
-instance GenValid a => GenValid (Timed a) where
+instance (GenValid a) => GenValid (Timed a) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 

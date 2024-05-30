@@ -56,7 +56,7 @@ instance
       pure SyncRequest {..}
   shrinkValid = shrinkValidStructurally
 
-instance GenValid si => GenValid (ClientAddition si) where
+instance (GenValid si) => GenValid (ClientAddition si) where
   genValid = genValidStructurallyWithoutExtraChecking
   shrinkValid = shrinkValidStructurallyWithoutExtraFiltering
 
@@ -92,7 +92,7 @@ instance
       pure SyncResponse {..}
   shrinkValid = shrinkValidStructurally
 
-splitSet :: Ord i => Set i -> Gen (Set i, Set i)
+splitSet :: (Ord i) => Set i -> Gen (Set i, Set i)
 splitSet s =
   if S.null s
     then pure (S.empty, S.empty)

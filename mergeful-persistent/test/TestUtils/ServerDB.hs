@@ -58,7 +58,7 @@ setupServerThingQuery = setupServerQuery serverUnmakeThing
 serverGetStoreThingQuery :: SqlPersistT IO (ServerStore ServerThingId Thing)
 serverGetStoreThingQuery = serverGetStoreQuery (\(Entity sid sr) -> (sid, serverMakeThing sr))
 
-serverProcessSyncThingQuery :: forall ci. Ord ci => SyncRequest ci ServerThingId Thing -> SqlPersistT IO (SyncResponse ci ServerThingId Thing)
+serverProcessSyncThingQuery :: forall ci. (Ord ci) => SyncRequest ci ServerThingId Thing -> SqlPersistT IO (SyncResponse ci ServerThingId Thing)
 serverProcessSyncThingQuery = serverProcessSyncQuery ServerThingTime [] serverMakeThing thingToServer serverRecordUpdates
 
 serverMakeThing :: ServerThing -> Timed Thing

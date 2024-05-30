@@ -773,13 +773,13 @@ evalD = runIdentity . evalDM
 
 -- runD :: D Identity a -> StdGen -> (a, StdGen)
 -- runD = runState . unD
-evalDM :: Functor m => D m a -> m a
+evalDM :: (Functor m) => D m a -> m a
 evalDM d = fst <$> runDM d (mkStdGen 42)
 
 runDM :: D m a -> StdGen -> m (a, StdGen)
 runDM = runStateT . unD
 
-genD :: Monad m => D m UUID
+genD :: (Monad m) => D m UUID
 genD = do
   r <- get
   let (u, r') = random r

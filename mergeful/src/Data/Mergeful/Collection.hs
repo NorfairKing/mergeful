@@ -230,14 +230,14 @@ clientStoreClientIdSet ClientStore {..} = M.keysSet clientStoreAddedItems
 -- | The set of server ids.
 --
 -- This does not include the ids of items that have been marked as deleted.
-clientStoreUndeletedSyncIdSet :: Ord si => ClientStore ci si a -> Set si
+clientStoreUndeletedSyncIdSet :: (Ord si) => ClientStore ci si a -> Set si
 clientStoreUndeletedSyncIdSet ClientStore {..} =
   S.unions [M.keysSet clientStoreSyncedItems, M.keysSet clientStoreSyncedButChangedItems]
 
 -- | The set of server ids.
 --
 -- This includes the ids of items that have been marked as deleted.
-clientStoreSyncIdSet :: Ord si => ClientStore ci si a -> Set si
+clientStoreSyncIdSet :: (Ord si) => ClientStore ci si a -> Set si
 clientStoreSyncIdSet ClientStore {..} =
   S.unions
     [ M.keysSet clientStoreSyncedItems,
@@ -292,7 +292,7 @@ findFreeSpot m =
 -- | Mark an item deleted in a client store.
 --
 -- This function will not delete the item, but mark it as deleted instead.
-markItemDeletedInClientStore :: Ord si => si -> ClientStore ci si a -> ClientStore ci si a
+markItemDeletedInClientStore :: (Ord si) => si -> ClientStore ci si a -> ClientStore ci si a
 markItemDeletedInClientStore u cs =
   let oldSyncedItems = clientStoreSyncedItems cs
       oldChangedItems = clientStoreSyncedButChangedItems cs
@@ -316,7 +316,7 @@ markItemDeletedInClientStore u cs =
 --
 -- It will not add an item to the store with the given id, because the
 -- server may not have been the origin of that id.
-changeItemInClientStore :: Ord si => si -> a -> ClientStore ci si a -> ClientStore ci si a
+changeItemInClientStore :: (Ord si) => si -> a -> ClientStore ci si a -> ClientStore ci si a
 changeItemInClientStore i a cs =
   case M.lookup i (clientStoreSyncedItems cs) of
     Just t ->
@@ -337,7 +337,7 @@ changeItemInClientStore i a cs =
 -- | Delete an unsynced item from a client store.
 --
 -- This function will immediately delete the item, because it has never been synced.
-deleteItemFromClientStore :: Ord ci => ci -> ClientStore ci si a -> ClientStore ci si a
+deleteItemFromClientStore :: (Ord ci) => ci -> ClientStore ci si a -> ClientStore ci si a
 deleteItemFromClientStore i cs = cs {clientStoreAddedItems = M.delete i (clientStoreAddedItems cs)}
 
 newtype ServerStore si a = ServerStore
@@ -440,11 +440,11 @@ data ClientAddition i = ClientAddition
   deriving stock (Show, Eq, Generic)
   deriving (FromJSON, ToJSON) via (Autodocodec (ClientAddition i))
 
-instance Validity i => Validity (ClientAddition i)
+instance (Validity i) => Validity (ClientAddition i)
 
-instance NFData i => NFData (ClientAddition i)
+instance (NFData i) => NFData (ClientAddition i)
 
-instance HasCodec i => HasCodec (ClientAddition i) where
+instance (HasCodec i) => HasCodec (ClientAddition i) where
   codec =
     object "ClientAddition" $
       ClientAddition
@@ -710,7 +710,7 @@ mergeAddedItems local added = M.foldlWithKey go (M.empty, M.empty) local
 -- | Merge the local synced but changed items with the ones that the server has acknowledged as changed.
 mergeSyncedButChangedItems ::
   forall i a.
-  Ord i =>
+  (Ord i) =>
   Map i (Timed a) ->
   Map i ServerTime ->
   (Map i (Timed a), Map i (Timed a))
@@ -723,7 +723,7 @@ mergeSyncedButChangedItems local changed = M.foldlWithKey go (M.empty, M.empty) 
         Just st' -> (m1, M.insert k (t {timedTime = st'}) m2)
 
 -- | Merge the local deleted items with the ones that the server has acknowledged as deleted.
-mergeDeletedItems :: Ord i => Map i b -> Set i -> Map i b
+mergeDeletedItems :: (Ord i) => Map i b -> Set i -> Map i b
 mergeDeletedItems m s = m `M.difference` M.fromSet (const ()) s
 
 -- | A processor for dealing with @SyncResponse@s on the client side.
@@ -840,7 +840,7 @@ mergeSyncResponseCustom ItemMergeStrategy {..} ClientSyncProcessor {..} SyncResp
 -- | Resolve change conflicts
 mergeSyncedButChangedConflicts ::
   forall si a.
-  Ord si =>
+  (Ord si) =>
   (a -> a -> ChangeConflictResolution a) ->
   -- | The conflicting items on the client side
   Map si (Timed a) ->
@@ -1059,5 +1059,5 @@ pureServerSyncProcessor genId = ServerSyncProcessor {..}
              in ServerStore m'
         )
 
-distinct :: Eq a => [a] -> Bool
+distinct :: (Eq a) => [a] -> Bool
 distinct ls = nub ls == ls

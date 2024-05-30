@@ -24,7 +24,7 @@ import Text.Colour
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
 
-forAllSubsequent :: Testable prop => ((ServerTime, ServerTime) -> prop) -> Property
+forAllSubsequent :: (Testable prop) => ((ServerTime, ServerTime) -> prop) -> Property
 forAllSubsequent func =
   forAllValid $ \st ->
     forAllShrink (genValid `suchThat` (> st)) (filter (> st) . shrinkValid) $ \st' -> func (st, st')

@@ -103,11 +103,11 @@ data ClientValue a = ClientValue
   deriving stock (Show, Eq, Generic)
   deriving (FromJSON, ToJSON) via (Autodocodec (ClientValue a))
 
-instance Validity a => Validity (ClientValue a)
+instance (Validity a) => Validity (ClientValue a)
 
-instance NFData a => NFData (ClientValue a)
+instance (NFData a) => NFData (ClientValue a)
 
-instance HasCodec a => HasCodec (ClientValue a) where
+instance (HasCodec a) => HasCodec (ClientValue a) where
   codec =
     object "ClientValue" $
       ClientValue
@@ -126,11 +126,11 @@ newtype ServerValue a = ServerValue {unServerValue :: Timed a}
   deriving stock (Show, Eq, Generic)
   deriving (FromJSON, ToJSON) via (Autodocodec (ServerValue a))
 
-instance Validity a => Validity (ServerValue a)
+instance (Validity a) => Validity (ServerValue a)
 
-instance NFData a => NFData (ServerValue a)
+instance (NFData a) => NFData (ServerValue a)
 
-instance HasCodec a => HasCodec (ServerValue a) where
+instance (HasCodec a) => HasCodec (ServerValue a) where
   codec = object "ServerValue" $ ServerValue <$> timedObjectCodec .= unServerValue
 
 -- | Initialise a server value.
@@ -148,11 +148,11 @@ data ValueSyncRequest a
   deriving stock (Show, Eq, Generic)
   deriving (FromJSON, ToJSON) via (Autodocodec (ValueSyncRequest a))
 
-instance Validity a => Validity (ValueSyncRequest a)
+instance (Validity a) => Validity (ValueSyncRequest a)
 
-instance NFData a => NFData (ValueSyncRequest a)
+instance (NFData a) => NFData (ValueSyncRequest a)
 
-instance HasCodec a => HasCodec (ValueSyncRequest a) where
+instance (HasCodec a) => HasCodec (ValueSyncRequest a) where
   codec =
     object "ValueSyncRequest" $
       dimapCodec f g $
@@ -188,11 +188,11 @@ data ValueSyncResponse a
   deriving stock (Show, Eq, Generic)
   deriving (FromJSON, ToJSON) via (Autodocodec (ValueSyncResponse a))
 
-instance Validity a => Validity (ValueSyncResponse a)
+instance (Validity a) => Validity (ValueSyncResponse a)
 
-instance NFData a => NFData (ValueSyncResponse a)
+instance (NFData a) => NFData (ValueSyncResponse a)
 
-instance HasCodec a => HasCodec (ValueSyncResponse a) where
+instance (HasCodec a) => HasCodec (ValueSyncResponse a) where
   codec =
     object "ValueSyncResponse" $
       dimapCodec f g $
@@ -240,9 +240,9 @@ data ValueMergeResult a
     MergeMismatch
   deriving (Show, Eq, Generic)
 
-instance Validity a => Validity (ValueMergeResult a)
+instance (Validity a) => Validity (ValueMergeResult a)
 
-instance NFData a => NFData (ValueMergeResult a)
+instance (NFData a) => NFData (ValueMergeResult a)
 
 -- | Merge an 'ValueSyncResponse' into the current 'ClientValue'.
 --
