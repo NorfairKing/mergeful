@@ -1,8 +1,8 @@
 # ServerValue
 [37mvalue[m: # [31mrequired[m
   # timed value
-  [33m<number>[m # [32m8 bit unsigned integer[m
+  [33m<integer>[m # [32m8 bit unsigned integer[m
 [37mtime[m: # [31mrequired[m
   # timed time
   # Server time
-  [33m<number>[m # [32m64 bit unsigned integer[m
+  [33m<integer>[m # [32m64 bit unsigned integer[m

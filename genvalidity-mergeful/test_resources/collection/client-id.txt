@@ -1,2 +1,2 @@
 # ClientId
-[33m<number>[m # [32m64 bit unsigned integer[m
+[33m<integer>[m # [32m64 bit unsigned integer[m

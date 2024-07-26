@@ -6,21 +6,21 @@
     # ClientAddition
     [37mid[m: # [31mrequired[m
       # client-side identifier
-      [33m<number>[m # [32m8 bit unsigned integer[m
+      [33m<integer>[m # [32m8 bit unsigned integer[m
     [37mtime[m: # [31mrequired[m
       # server-side time
       # Server time
-      [33m<number>[m # [32m64 bit unsigned integer[m
+      [33m<integer>[m # [32m64 bit unsigned integer[m
 [37mclient-changed[m: # [34moptional[m
   # default: [35m{}[m
   # items changed by the client
   [37m<key>[m: 
     # Server time
-    [33m<number>[m # [32m64 bit unsigned integer[m
+    [33m<integer>[m # [32m64 bit unsigned integer[m
 [37mclient-deleted[m: # [34moptional[m
   # default: [35m[][m
   # items deleted by the client
-  - [33m<number>[m # [32m8 bit unsigned integer[m
+  - [33m<integer>[m # [32m8 bit unsigned integer[m
 [37mserver-added[m: # [34moptional[m
   # default: [35m{}[m
   # items added by the server
@@ -28,11 +28,11 @@
     # Timed
     [37mvalue[m: # [31mrequired[m
       # timed value
-      [33m<number>[m # [32m8 bit unsigned integer[m
+      [33m<integer>[m # [32m8 bit unsigned integer[m
     [37mtime[m: # [31mrequired[m
       # timed time
       # Server time
-      [33m<number>[m # [32m64 bit unsigned integer[m
+      [33m<integer>[m # [32m64 bit unsigned integer[m
 [37mserver-changed[m: # [34moptional[m
   # default: [35m{}[m
   # items changed by the server
@@ -40,15 +40,15 @@
     # Timed
     [37mvalue[m: # [31mrequired[m
       # timed value
-      [33m<number>[m # [32m8 bit unsigned integer[m
+      [33m<integer>[m # [32m8 bit unsigned integer[m
     [37mtime[m: # [31mrequired[m
       # timed time
       # Server time
-      [33m<number>[m # [32m64 bit unsigned integer[m
+      [33m<integer>[m # [32m64 bit unsigned integer[m
 [37mserver-deleted[m: # [34moptional[m
   # default: [35m[][m
   # items deleted by the server
-  - [33m<number>[m # [32m8 bit unsigned integer[m
+  - [33m<integer>[m # [32m8 bit unsigned integer[m
 [37mconflict[m: # [34moptional[m
   # default: [35m{}[m
   # items that were changed simultaneously
@@ -56,11 +56,11 @@
     # Timed
     [37mvalue[m: # [31mrequired[m
       # timed value
-      [33m<number>[m # [32m8 bit unsigned integer[m
+      [33m<integer>[m # [32m8 bit unsigned integer[m
     [37mtime[m: # [31mrequired[m
       # timed time
       # Server time
-      [33m<number>[m # [32m64 bit unsigned integer[m
+      [33m<integer>[m # [32m64 bit unsigned integer[m
 [37mconflict-client-deleted[m: # [34moptional[m
   # default: [35m{}[m
   # items that the server changed while the client deleted it
@@ -68,12 +68,12 @@
     # Timed
     [37mvalue[m: # [31mrequired[m
       # timed value
-      [33m<number>[m # [32m8 bit unsigned integer[m
+      [33m<integer>[m # [32m8 bit unsigned integer[m
     [37mtime[m: # [31mrequired[m
       # timed time
       # Server time
-      [33m<number>[m # [32m64 bit unsigned integer[m
+      [33m<integer>[m # [32m64 bit unsigned integer[m
 [37mconflict-server-deleted[m: # [34moptional[m
   # default: [35m[][m
   # items that the client changed while the server deleted it
-  - [33m<number>[m # [32m8 bit unsigned integer[m
+  - [33m<integer>[m # [32m8 bit unsigned integer[m
