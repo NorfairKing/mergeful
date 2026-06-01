@@ -1,5 +1,7 @@
 # Mergefull
 
+[![NixCI](https://staging.nix-ci.com/badge/gh:NorfairKing:mergeful)](https://staging.nix-ci.com/gh:NorfairKing:mergeful)
+
 A way to synchronise items with safe merge conflicts.
 
 ## Related project
